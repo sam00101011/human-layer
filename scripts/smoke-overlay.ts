@@ -11,8 +11,8 @@ const artifactDir = join(rootDir, "output", "playwright");
 const appUrl = process.env.HL_SMOKE_APP_URL ?? "http://127.0.0.1:3000";
 const githubBaseUrl = "https://github.com";
 const githubRepoUrl = "https://github.com/vercel/next.js";
-const githubIssuePath = "/vercel/next.js/issues/56789";
-const githubPrPath = "/vercel/next.js/pull/12345";
+const githubIssuePath = "/vercel/next.js/issues/999999";
+const githubPrPath = "/vercel/next.js/pull/56789";
 const overlayErrorText = "Human Layer is having trouble loading right now.";
 const browserChannel =
   process.env.HL_SMOKE_BROWSER_CHANNEL === "chromium" ||
@@ -86,7 +86,7 @@ async function verifyHappyPath(page: Page) {
 
 async function verifyClientSideNavigation(page: Page) {
   await navigateToGitHubPath(page, githubIssuePath);
-  await expectOverlayTitle(page, "vercel/next.js issue #56789");
+  await expectOverlayTitle(page, "vercel/next.js issue #999999");
 }
 
 async function verifyRetryShell(page: Page, context: BrowserContext) {
@@ -109,7 +109,7 @@ async function verifyRetryShell(page: Page, context: BrowserContext) {
 
   if (retryShellVerified) {
     await getOverlay(page).getByRole("button", { name: "Retry" }).click();
-    await expectOverlayTitle(page, "vercel/next.js PR #12345");
+    await expectOverlayTitle(page, "vercel/next.js PR #56789");
   }
 }
 
