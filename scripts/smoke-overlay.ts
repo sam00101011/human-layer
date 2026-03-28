@@ -27,7 +27,7 @@ function escapeRegex(input: string) {
 function buildExtension() {
   execFileSync(
     "corepack",
-    ["pnpm", "--filter", "@human-layer/extension", "build", "--store-dir", "/tmp/pnpm/store/v10"],
+    ["pnpm", "--filter", "@human-layer/extension", "build"],
     { cwd: rootDir, stdio: "inherit" }
   );
 }

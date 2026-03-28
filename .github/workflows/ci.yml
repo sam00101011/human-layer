@@ -11,6 +11,7 @@ env:
   SESSION_SECRET: ci-session-secret
   EXTENSION_TOKEN_SECRET: ci-extension-token-secret
   NEXT_TELEMETRY_DISABLED: "1"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   verify:
