@@ -13,6 +13,26 @@ describe("getOverlayTarget", () => {
     ).toBe("hn_item");
   });
 
+  it("returns direct overlay targets for newly supported surfaces", () => {
+    expect(getOverlayTarget("https://www.producthunt.com/products/raycast")?.pageKind).toBe(
+      "product_hunt_product"
+    );
+    expect(getOverlayTarget("https://lobste.rs/s/abc123/cool_launch")?.pageKind).toBe(
+      "lobsters_story"
+    );
+    expect(getOverlayTarget("https://gitlab.com/gitlab-org/gitlab/-/issues/42")?.pageKind).toBe(
+      "gitlab_issue"
+    );
+    expect(getOverlayTarget("https://huggingface.co/openai/gpt-oss-20b")?.pageKind).toBe(
+      "hugging_face_model"
+    );
+    expect(getOverlayTarget("https://www.npmjs.com/package/react")?.pageKind).toBe("npm_package");
+    expect(getOverlayTarget("https://pypi.org/project/fastapi/")?.pageKind).toBe("pypi_package");
+    expect(getOverlayTarget("https://dev.to/addyosmani/modern-page-speed-1l2n")?.pageKind).toBe(
+      "blog_post"
+    );
+  });
+
   it("rejects unsupported GitHub paths", () => {
     expect(getOverlayTarget("https://github.com/vercel")).toBeNull();
   });

@@ -1,0 +1,9 @@
+ALTER TYPE page_kind ADD VALUE IF NOT EXISTS 'lobsters_story';
+ALTER TYPE page_kind ADD VALUE IF NOT EXISTS 'gitlab_project';
+ALTER TYPE page_kind ADD VALUE IF NOT EXISTS 'gitlab_issue';
+ALTER TYPE page_kind ADD VALUE IF NOT EXISTS 'gitlab_merge_request';
+ALTER TYPE page_kind ADD VALUE IF NOT EXISTS 'hugging_face_model';
+ALTER TYPE page_kind ADD VALUE IF NOT EXISTS 'hugging_face_dataset';
+ALTER TYPE page_kind ADD VALUE IF NOT EXISTS 'hugging_face_space';
+ALTER TYPE page_kind ADD VALUE IF NOT EXISTS 'npm_package';
+ALTER TYPE page_kind ADD VALUE IF NOT EXISTS 'pypi_package';

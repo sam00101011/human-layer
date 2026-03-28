@@ -16,7 +16,24 @@ function createHost() {
 }
 
 export default defineContentScript({
-  matches: ["https://github.com/*", "https://news.ycombinator.com/*"],
+  matches: [
+    "https://github.com/*",
+    "https://news.ycombinator.com/*",
+    "https://producthunt.com/*",
+    "https://www.producthunt.com/*",
+    "https://lobste.rs/*",
+    "https://gitlab.com/*",
+    "https://huggingface.co/*",
+    "https://npmjs.com/*",
+    "https://www.npmjs.com/*",
+    "https://pypi.org/*",
+    "https://dev.to/*",
+    "https://medium.com/*",
+    "https://*.medium.com/*",
+    "https://hashnode.com/*",
+    "https://*.hashnode.dev/*",
+    "https://*.substack.com/*"
+  ],
   async main(ctx) {
     let host: HTMLDivElement | null = null;
     let root: Root | null = null;

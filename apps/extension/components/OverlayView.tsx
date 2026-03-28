@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import type { NormalizedPageCandidate, PageLookupResponse, Verdict } from "@human-layer/core";
+import { Bookmark, BookmarkCheck } from "lucide-react";
 
 import type { OverlaySurfaceState } from "./OverlayController";
 
@@ -124,13 +125,17 @@ function renderComposer(props: OverlayViewProps, lookup: PageLookupResponse) {
 
   const isSubmitDisabled =
     props.isSubmitting || (!props.selectedVerdict && props.draftComment.trim().length === 0);
+  const SaveIcon = props.isSaved ? BookmarkCheck : Bookmark;
 
   return (
     <div style={{ display: "grid", gap: 10 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span style={sectionLabelStyle}>Your take</span>
         <button onClick={props.onSave} style={secondaryButtonStyle} type="button">
-          {props.isSaved ? "Saved" : "Save page"}
+          <span style={buttonIconLabelStyle}>
+            <SaveIcon aria-hidden="true" size={14} strokeWidth={2.2} />
+            <span>{props.isSaved ? "Bookmarked" : "Bookmark"}</span>
+          </span>
         </button>
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -391,6 +396,12 @@ const secondaryButtonStyle: CSSProperties = {
   padding: "9px 12px",
   fontSize: 13,
   fontWeight: 600
+};
+
+const buttonIconLabelStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8
 };
 
 const mutedStyle: CSSProperties = {

@@ -149,6 +149,42 @@ describe("OverlayView", () => {
     expect(screen.getByText("Post take")).toBeTruthy();
   });
 
+  it("labels the save action as a bookmark", () => {
+    const lookup = {
+      supported: true,
+      state: "active",
+      page: {
+        id: "1",
+        pageKind: "github_repo",
+        canonicalUrl: "https://github.com/vercel/next.js",
+        canonicalKey: "https://github.com/vercel/next.js",
+        host: "github.com",
+        title: "vercel/next.js"
+      },
+      thread: {
+        verdictCounts: {
+          useful: 1,
+          misleading: 0,
+          outdated: 0,
+          scam: 0
+        },
+        topHumanTake: null,
+        recentComments: []
+      },
+      viewer: {
+        profileId: "viewer-1",
+        handle: "viewer"
+      }
+    } satisfies PageLookupResponse;
+
+    const unsavedView = renderOverlay(lookup);
+    expect(within(unsavedView.container).getByRole("button", { name: "Bookmark" })).toBeTruthy();
+    unsavedView.unmount();
+
+    const savedView = renderOverlay(lookup, { isSaved: true });
+    expect(within(savedView.container).getByRole("button", { name: "Bookmarked" })).toBeTruthy();
+  });
+
   it("opens the page and profile links from the overlay", () => {
     const onOpenPage = vi.fn();
     const onOpenProfile = vi.fn();

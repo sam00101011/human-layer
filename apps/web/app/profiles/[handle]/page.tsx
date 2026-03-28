@@ -55,7 +55,7 @@ export default async function ProfilePage(props: {
           </div>
           <div className="stat-card">
             <strong>{profile.counts.saves}</strong>
-            <span className="muted">Saved pages</span>
+            <span className="muted">Bookmarked pages</span>
           </div>
           <div className="stat-card">
             <strong>{profile.counts.followers}</strong>
@@ -100,11 +100,11 @@ export default async function ProfilePage(props: {
 
       <section className="card stack">
         <div className="section-header">
-          <h2>Saved pages</h2>
+          <h2>Bookmarked pages</h2>
           <span className="muted">Pages this profile wanted to come back to.</span>
         </div>
         {profile.savedPages.length === 0 ? (
-          <p className="muted">No saved pages yet.</p>
+          <p className="muted">No bookmarked pages yet.</p>
         ) : (
           profile.savedPages.map((page) => (
             <article className="stack comment-card" key={page.id}>

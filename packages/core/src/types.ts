@@ -5,6 +5,15 @@ export const PAGE_KINDS = [
   "hn_item",
   "hn_linked_url",
   "product_hunt_product",
+  "lobsters_story",
+  "gitlab_project",
+  "gitlab_issue",
+  "gitlab_merge_request",
+  "hugging_face_model",
+  "hugging_face_dataset",
+  "hugging_face_space",
+  "npm_package",
+  "pypi_package",
   "docs_page",
   "blog_post"
 ] as const;
@@ -16,7 +25,18 @@ export const PHASE_0_PAGE_KINDS = [
   "github_issue",
   "github_pr",
   "hn_item",
-  "hn_linked_url"
+  "hn_linked_url",
+  "product_hunt_product",
+  "lobsters_story",
+  "gitlab_project",
+  "gitlab_issue",
+  "gitlab_merge_request",
+  "hugging_face_model",
+  "hugging_face_dataset",
+  "hugging_face_space",
+  "npm_package",
+  "pypi_package",
+  "blog_post"
 ] as const satisfies readonly PageKind[];
 
 export type Phase0PageKind = (typeof PHASE_0_PAGE_KINDS)[number];
@@ -61,7 +81,18 @@ export type NormalizerName =
   | "githubIssue"
   | "githubPr"
   | "hnItem"
-  | "hnLinkedUrl";
+  | "hnLinkedUrl"
+  | "productHuntProduct"
+  | "lobstersStory"
+  | "gitlabProject"
+  | "gitlabIssue"
+  | "gitlabMergeRequest"
+  | "huggingFaceModel"
+  | "huggingFaceDataset"
+  | "huggingFaceSpace"
+  | "npmPackage"
+  | "pypiPackage"
+  | "blogPost";
 
 export type SupportedDomainRule = {
   id: string;

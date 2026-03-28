@@ -110,4 +110,15 @@ describe("lookupPageByUrl", () => {
     expect(response.page?.pageKind).toBe("hn_linked_url");
     expect(response.thread?.topHumanTake?.commentId).toBe("c1");
   });
+
+  it("returns empty for newly supported direct pages", async () => {
+    const response = await lookupPageByUrl(
+      "https://www.producthunt.com/products/raycast",
+      createStore()
+    );
+
+    expect(response.supported).toBe(true);
+    expect(response.state).toBe("empty");
+    expect(response.page?.pageKind).toBe("product_hunt_product");
+  });
 });
