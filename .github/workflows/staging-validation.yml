@@ -1,0 +1,59 @@
+name: Staging Validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: Hosted staging or preview base URL
+        required: true
+        type: string
+
+jobs:
+  staging-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.6.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: corepack pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: corepack pnpm exec playwright install --with-deps chromium
+
+      - name: Check staged verify and lookup routes
+        env:
+          HL_UPTIME_BASE_URL: ${{ inputs.base_url }}
+        run: node scripts/check-production-uptime.mjs
+
+      - name: Run overlay smoke test against staging
+        env:
+          CI: "1"
+          HL_SMOKE_APP_URL: ${{ inputs.base_url }}
+          HL_SMOKE_BROWSER_CHANNEL: chromium
+          WXT_APP_URL: ${{ inputs.base_url }}
+          APP_URL: ${{ inputs.base_url }}
+        run: xvfb-run -a corepack pnpm smoke:overlay
+
+      - name: Upload staging smoke artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-smoke-artifacts
+          path: output

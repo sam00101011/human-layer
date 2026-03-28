@@ -214,6 +214,10 @@ Current CI already covers:
 - builds
 - overlay smoke test
 
+Additional operational workflows:
+- hourly production uptime via `.github/workflows/production-guardrails.yml`
+- manual preview validation via `.github/workflows/staging-validation.yml`
+
 Recommended release sequence:
 
 1. Merge to default branch.

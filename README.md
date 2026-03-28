@@ -42,6 +42,10 @@ Deployment and production setup:
 - `apps/extension/.env.production.example`
 - `apps/extension/.env.staging.example`
 
+Operational workflows:
+- `.github/workflows/production-guardrails.yml` runs the production uptime guardrail hourly
+- `.github/workflows/staging-validation.yml` validates any preview URL with uptime and overlay smoke checks
+
 Default local ports:
 - web app: `http://127.0.0.1:3000`
 - extension dev server: `http://127.0.0.1:3001`

@@ -12,3 +12,4 @@ release-artifacts
 .env
 .env.local
 *.tsbuildinfo
+.vercel
