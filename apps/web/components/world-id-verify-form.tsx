@@ -50,6 +50,7 @@ export function WorldIdVerifyForm({
   const redirectRef = useRef<string | null>(null);
   const verifyFailureMessageRef = useRef<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [isCheckingExistingSession, setIsCheckingExistingSession] = useState(handoff);
   const [handle, setHandle] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>(["devtools", "research"]);
   const [mockHumanKey, setMockHumanKey] = useState("");
@@ -66,6 +67,46 @@ export function WorldIdVerifyForm({
     window.localStorage.setItem("human-layer/mock-human-key", nextValue);
     setMockHumanKey(nextValue);
   }, [worldIdConfig.mode]);
+
+  useEffect(() => {
+    if (!handoff) {
+      setIsCheckingExistingSession(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function resumeExistingSession() {
+      try {
+        const response = await fetch("/api/me");
+        const payload = (await response.json().catch(() => null)) as
+          | { viewer?: { handle: string } | null }
+          | null;
+
+        if (cancelled) return;
+
+        if (response.ok && payload?.viewer) {
+          setStatusMessage("Existing session found. Returning to the extension...");
+          router.replace(
+            `/auth/extension-handoff?returnUrl=${encodeURIComponent(returnUrl)}`
+          );
+          return;
+        }
+      } catch {
+        // Fall through to the standard verification form when the session probe fails.
+      }
+
+      if (!cancelled) {
+        setIsCheckingExistingSession(false);
+      }
+    }
+
+    void resumeExistingSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [handoff, returnUrl, router]);
 
   function toggleTag(tag: string) {
     setSelectedTags((current) => {
@@ -353,8 +394,13 @@ export function WorldIdVerifyForm({
         </div>
       </div>
 
-      <button className="button" disabled={isPending} onClick={handleSubmit} type="button">
-        {isPending ? "Preparing..." : verifyButtonLabel}
+      <button
+        className="button"
+        disabled={isPending || isCheckingExistingSession}
+        onClick={handleSubmit}
+        type="button"
+      >
+        {isCheckingExistingSession ? "Checking session..." : isPending ? "Preparing..." : verifyButtonLabel}
       </button>
 
       {worldIdConfig.mode === "remote" && requestConfig ? (
