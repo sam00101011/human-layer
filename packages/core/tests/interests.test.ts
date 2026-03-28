@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { getInterestTagLabel, getRelatedInterestTags } from "../src/interests";
+import {
+  FEATURED_TOPIC_TAGS,
+  getInterestGroupForTag,
+  getInterestTagDescription,
+  getInterestTagLabel,
+  getRelatedInterestTags
+} from "../src/interests";
 
 describe("interest graph", () => {
   it("returns readable labels for expanded tags", () => {
@@ -25,5 +31,11 @@ describe("interest graph", () => {
 
   it("returns starter suggestions when nothing is selected", () => {
     expect(getRelatedInterestTags([], 4)).toEqual(["devtools", "ai", "product", "growth"]);
+  });
+
+  it("exposes topic metadata for featured surfaces", () => {
+    expect(FEATURED_TOPIC_TAGS).toContain("ai");
+    expect(getInterestGroupForTag("growth")?.id).toBe("growth-business");
+    expect(getInterestTagDescription("devtools")).toContain("build and ship");
   });
 });

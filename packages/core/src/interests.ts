@@ -129,6 +129,15 @@ export const STARTER_INTEREST_TAGS: InterestTag[] = [
   "marketplaces"
 ];
 
+export const FEATURED_TOPIC_TAGS: InterestTag[] = [
+  "ai",
+  "devtools",
+  "growth",
+  "security",
+  "design",
+  "infra"
+];
+
 const INTEREST_RELATIONSHIPS: Partial<Record<InterestTag, InterestTag[]>> = {
   ai: ["agents", "llms", "ml", "automation", "research"],
   agents: ["ai", "automation", "llms", "apis", "devtools"],
@@ -188,6 +197,24 @@ function addScore(scores: Map<InterestTag, number>, tag: InterestTag, score: num
 
 export function getInterestTagLabel(tag: InterestTag): string {
   return INTEREST_TAG_LABELS[tag];
+}
+
+export function getInterestGroupForTag(tag: InterestTag): InterestGroupDefinition | null {
+  return GROUP_BY_TAG.get(tag) ?? null;
+}
+
+export function getInterestTagDescription(tag: InterestTag): string {
+  const group = getInterestGroupForTag(tag);
+  const related = getRelatedInterestTags([tag], 3).map((relatedTag) => getInterestTagLabel(relatedTag));
+
+  if (!group) {
+    return `Verified-human pages, people, and takes around ${getInterestTagLabel(tag)}.`;
+  }
+
+  const relatedText =
+    related.length > 0 ? ` Nearby interests include ${related.join(", ")}.` : "";
+
+  return `Part of ${group.label.toLowerCase()}, with pages, contributors, and takes clustered around ${getInterestTagLabel(tag)}.${relatedText}`;
 }
 
 export function getRelatedInterestTags(

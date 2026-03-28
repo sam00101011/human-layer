@@ -1,7 +1,9 @@
 import {
   buildPageContextSummary,
   EMPTY_VERDICT_COUNTS,
+  getInterestTagDescription,
   getInterestTagLabel,
+  getRelatedInterestTags,
   INTEREST_TAGS,
   MAX_PROFILE_INTERESTS,
   SUPPORTED_DOMAIN_RULES,
@@ -166,6 +168,23 @@ export type DiscoverySearchResults = {
   profiles: DiscoveryProfile[];
 };
 
+export type TopicSurface = {
+  topic: InterestTag;
+  label: string;
+  description: string;
+  clusterTags: InterestTag[];
+  relatedTopics: InterestTag[];
+  trendingPages: DiscoveryPage[];
+  topTakes: DiscoveryTake[];
+  topContributors: DiscoveryProfile[];
+};
+
+export type FollowRecommendedPage = DiscoveryPage & {
+  bookmarkedByCount: number;
+  bookmarkedByHandles: string[];
+  reason: string;
+};
+
 export class HandleTakenError extends Error {
   constructor(handle: string) {
     super(`handle ${handle} is already taken`);
@@ -216,6 +235,287 @@ function defaultContributorReputation() {
     distinctPageCount: 0,
     verdictCount: 0
   });
+}
+
+type RankedPageActivityRow = PageSummary & {
+  verdictCount: number;
+  commentCount: number;
+  bookmarkCount: number;
+  activityScore: number;
+};
+
+type DiscoveryProfileRow = {
+  id: string;
+  handle: string;
+  interestTags: unknown;
+  nullifierHash: string | null;
+};
+
+function buildInterestCluster(topic: InterestTag, relatedLimit = 5): InterestTag[] {
+  return [...new Set([topic, ...getRelatedInterestTags([topic], relatedLimit)])];
+}
+
+function hasInterestOverlap(candidateTags: readonly InterestTag[], clusterTags: readonly InterestTag[]): boolean {
+  const cluster = new Set(clusterTags);
+  return candidateTags.some((tag) => cluster.has(tag));
+}
+
+function countSharedInterestTags(candidateTags: readonly InterestTag[], clusterTags: readonly InterestTag[]): number {
+  const cluster = new Set(clusterTags);
+  return candidateTags.filter((tag) => cluster.has(tag)).length;
+}
+
+async function getRankedPageActivityRows(): Promise<RankedPageActivityRow[]> {
+  const [verdictRows, commentRows, bookmarkRows] = await Promise.all([
+    db
+      .select({
+        pageId: verdicts.pageId,
+        count: sql<number>`count(*)::int`
+      })
+      .from(verdicts)
+      .groupBy(verdicts.pageId),
+    db
+      .select({
+        pageId: comments.pageId,
+        count: sql<number>`count(*)::int`
+      })
+      .from(comments)
+      .where(eq(comments.hidden, false))
+      .groupBy(comments.pageId),
+    db
+      .select({
+        pageId: saves.pageId,
+        count: sql<number>`count(*)::int`
+      })
+      .from(saves)
+      .groupBy(saves.pageId)
+  ]);
+
+  const verdictMap = new Map(verdictRows.map((row) => [row.pageId, row.count]));
+  const commentMap = new Map(commentRows.map((row) => [row.pageId, row.count]));
+  const bookmarkMap = new Map(bookmarkRows.map((row) => [row.pageId, row.count]));
+  const pageIds = [...new Set([...verdictMap.keys(), ...commentMap.keys(), ...bookmarkMap.keys()])];
+
+  if (pageIds.length === 0) return [];
+
+  const pageRows = await db
+    .select({
+      id: pages.id,
+      pageKind: pages.pageKind,
+      canonicalUrl: pages.canonicalUrl,
+      canonicalKey: pages.canonicalKey,
+      host: pages.host,
+      title: pages.title
+    })
+    .from(pages)
+    .where(inArray(pages.id, pageIds));
+
+  return pageRows
+    .map((row) => {
+      const verdictCount = verdictMap.get(row.id) ?? 0;
+      const commentCount = commentMap.get(row.id) ?? 0;
+      const bookmarkCount = bookmarkMap.get(row.id) ?? 0;
+
+      return {
+        id: row.id,
+        pageKind: row.pageKind as PageSummary["pageKind"],
+        canonicalUrl: row.canonicalUrl,
+        canonicalKey: row.canonicalKey,
+        host: row.host,
+        title: row.title,
+        verdictCount,
+        commentCount,
+        bookmarkCount,
+        activityScore: verdictCount * 3 + commentCount * 4 + bookmarkCount * 2
+      } satisfies RankedPageActivityRow;
+    })
+    .sort((left, right) => right.activityScore - left.activityScore || right.commentCount - left.commentCount);
+}
+
+async function hydrateDiscoveryPages(rows: RankedPageActivityRow[]): Promise<DiscoveryPage[]> {
+  return Promise.all(
+    rows.map(async (page) => {
+      const thread = await getPageThreadSnapshot(page.id);
+      const context = buildPageContextSummary({
+        page: {
+          pageKind: page.pageKind,
+          host: page.host,
+          title: page.title
+        },
+        thread
+      });
+
+      return {
+        id: page.id,
+        pageKind: page.pageKind,
+        canonicalUrl: page.canonicalUrl,
+        canonicalKey: page.canonicalKey,
+        host: page.host,
+        title: page.title,
+        verdictCount: page.verdictCount,
+        commentCount: page.commentCount,
+        bookmarkCount: page.bookmarkCount,
+        activityScore: page.activityScore,
+        summary: context.summary,
+        tags: context.tags
+      } satisfies DiscoveryPage;
+    })
+  );
+}
+
+async function getDiscoveryPagesByIds(pageIds: string[]): Promise<Map<string, DiscoveryPage>> {
+  const uniquePageIds = [...new Set(pageIds)];
+  if (uniquePageIds.length === 0) {
+    return new Map();
+  }
+
+  const rankedRows = await getRankedPageActivityRows();
+  const rankedRowMap = new Map(rankedRows.map((row) => [row.id, row]));
+  const missingPageIds = uniquePageIds.filter((pageId) => !rankedRowMap.has(pageId));
+
+  const missingRows =
+    missingPageIds.length === 0
+      ? []
+      : (
+          await db
+            .select({
+              id: pages.id,
+              pageKind: pages.pageKind,
+              canonicalUrl: pages.canonicalUrl,
+              canonicalKey: pages.canonicalKey,
+              host: pages.host,
+              title: pages.title
+            })
+            .from(pages)
+            .where(inArray(pages.id, missingPageIds))
+        ).map((row) => ({
+          id: row.id,
+          pageKind: row.pageKind as PageSummary["pageKind"],
+          canonicalUrl: row.canonicalUrl,
+          canonicalKey: row.canonicalKey,
+          host: row.host,
+          title: row.title,
+          verdictCount: 0,
+          commentCount: 0,
+          bookmarkCount: 0,
+          activityScore: 0
+        }) satisfies RankedPageActivityRow);
+
+  const targetRows = uniquePageIds
+    .map((pageId) => rankedRowMap.get(pageId) ?? missingRows.find((row) => row.id === pageId))
+    .filter((row): row is RankedPageActivityRow => Boolean(row));
+
+  const discoveryPages = await hydrateDiscoveryPages(targetRows);
+  return new Map(discoveryPages.map((page) => [page.id, page]));
+}
+
+async function getRankedTakeCandidates(limit = 24): Promise<DiscoveryTake[]> {
+  const rows = await db
+    .select({
+      commentId: comments.id,
+      body: comments.body,
+      createdAt: comments.createdAt,
+      profileId: profiles.id,
+      profileHandle: profiles.handle,
+      pageId: pages.id,
+      pageKind: pages.pageKind,
+      pageTitle: pages.title,
+      canonicalUrl: pages.canonicalUrl,
+      helpfulCount: sql<number>`count(${commentHelpfulVotes.id})::int`
+    })
+    .from(comments)
+    .innerJoin(profiles, eq(profiles.id, comments.profileId))
+    .innerJoin(pages, eq(pages.id, comments.pageId))
+    .leftJoin(commentHelpfulVotes, eq(commentHelpfulVotes.commentId, comments.id))
+    .where(eq(comments.hidden, false))
+    .groupBy(
+      comments.id,
+      comments.body,
+      comments.createdAt,
+      profiles.id,
+      profiles.handle,
+      pages.id,
+      pages.pageKind,
+      pages.title,
+      pages.canonicalUrl
+    )
+    .orderBy(desc(sql<number>`count(${commentHelpfulVotes.id})::int`), desc(comments.createdAt))
+    .limit(Math.max(limit * 2, 24));
+
+  const reputationMap = await getContributorReputationMap(rows.map((row) => row.profileId));
+
+  return rows
+    .map((row) => ({
+      commentId: row.commentId,
+      body: row.body,
+      createdAt: row.createdAt.toISOString(),
+      helpfulCount: row.helpfulCount,
+      profileId: row.profileId,
+      profileHandle: row.profileHandle,
+      pageId: row.pageId,
+      pageKind: row.pageKind as PageSummary["pageKind"],
+      pageTitle: row.pageTitle,
+      canonicalUrl: row.canonicalUrl,
+      reputation: reputationMap.get(row.profileId) ?? defaultContributorReputation()
+    }))
+    .sort(
+      (left, right) =>
+        rankTakeLikeSignal({
+          helpfulCount: right.helpfulCount,
+          createdAt: right.createdAt,
+          reputationLevel: right.reputation?.level
+        }) -
+          rankTakeLikeSignal({
+            helpfulCount: left.helpfulCount,
+            createdAt: left.createdAt,
+            reputationLevel: left.reputation?.level
+          }) ||
+        new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+    )
+    .slice(0, limit);
+}
+
+async function getProfileDiscoveryRows(
+  viewerProfileId?: string
+): Promise<{
+  profileRows: DiscoveryProfileRow[];
+  commentCountMap: Map<string, number>;
+  followerCountMap: Map<string, number>;
+  reputationMap: Map<string, ContributorReputation>;
+}> {
+  const [profileRows, commentRows, followerRows] = await Promise.all([
+    db
+      .select({
+        id: profiles.id,
+        handle: profiles.handle,
+        interestTags: profiles.interestTags,
+        nullifierHash: profiles.nullifierHash
+      })
+      .from(profiles)
+      .where(viewerProfileId ? ne(profiles.id, viewerProfileId) : undefined),
+    db
+      .select({
+        profileId: comments.profileId,
+        count: sql<number>`count(*)::int`
+      })
+      .from(comments)
+      .where(eq(comments.hidden, false))
+      .groupBy(comments.profileId),
+    db
+      .select({
+        profileId: follows.followeeProfileId,
+        count: sql<number>`count(*)::int`
+      })
+      .from(follows)
+      .groupBy(follows.followeeProfileId)
+  ]);
+
+  return {
+    profileRows,
+    commentCountMap: new Map(commentRows.map((row) => [row.profileId, row.count])),
+    followerCountMap: new Map(followerRows.map((row) => [row.profileId, row.count])),
+    reputationMap: await getContributorReputationMap(profileRows.map((row) => row.id))
+  };
 }
 
 function buildNotificationReason(sources: NotificationSource[]): string {
@@ -508,163 +808,12 @@ export async function getPageThreadSnapshot(pageId: string): Promise<ThreadSnaps
 }
 
 export async function getTrendingPages(limit = 6): Promise<DiscoveryPage[]> {
-  const [verdictRows, commentRows, bookmarkRows] = await Promise.all([
-    db
-      .select({
-        pageId: verdicts.pageId,
-        count: sql<number>`count(*)::int`
-      })
-      .from(verdicts)
-      .groupBy(verdicts.pageId),
-    db
-      .select({
-        pageId: comments.pageId,
-        count: sql<number>`count(*)::int`
-      })
-      .from(comments)
-      .where(eq(comments.hidden, false))
-      .groupBy(comments.pageId),
-    db
-      .select({
-        pageId: saves.pageId,
-        count: sql<number>`count(*)::int`
-      })
-      .from(saves)
-      .groupBy(saves.pageId)
-  ]);
-
-  const verdictMap = new Map(verdictRows.map((row) => [row.pageId, row.count]));
-  const commentMap = new Map(commentRows.map((row) => [row.pageId, row.count]));
-  const bookmarkMap = new Map(bookmarkRows.map((row) => [row.pageId, row.count]));
-  const pageIds = [...new Set([...verdictMap.keys(), ...commentMap.keys(), ...bookmarkMap.keys()])];
-
-  if (pageIds.length === 0) return [];
-
-  const pageRows = await db
-    .select({
-      id: pages.id,
-      pageKind: pages.pageKind,
-      canonicalUrl: pages.canonicalUrl,
-      canonicalKey: pages.canonicalKey,
-      host: pages.host,
-      title: pages.title
-    })
-    .from(pages)
-    .where(inArray(pages.id, pageIds));
-
-  const rankedPages = pageRows
-    .map((row) => {
-      const verdictCount = verdictMap.get(row.id) ?? 0;
-      const commentCount = commentMap.get(row.id) ?? 0;
-      const bookmarkCount = bookmarkMap.get(row.id) ?? 0;
-
-      return {
-        ...row,
-        verdictCount,
-        commentCount,
-        bookmarkCount,
-        activityScore: verdictCount * 3 + commentCount * 4 + bookmarkCount * 2
-      };
-    })
-    .sort((left, right) => right.activityScore - left.activityScore || right.commentCount - left.commentCount)
-    .slice(0, limit);
-
-  const withContext = await Promise.all(
-    rankedPages.map(async (page) => {
-      const thread = await getPageThreadSnapshot(page.id);
-      const context = buildPageContextSummary({
-        page: {
-          pageKind: page.pageKind as PageSummary["pageKind"],
-          host: page.host,
-          title: page.title
-        },
-        thread
-      });
-
-      return {
-        id: page.id,
-        pageKind: page.pageKind as PageSummary["pageKind"],
-        canonicalUrl: page.canonicalUrl,
-        canonicalKey: page.canonicalKey,
-        host: page.host,
-        title: page.title,
-        verdictCount: page.verdictCount,
-        commentCount: page.commentCount,
-        bookmarkCount: page.bookmarkCount,
-        activityScore: page.activityScore,
-        summary: context.summary,
-        tags: context.tags
-      } satisfies DiscoveryPage;
-    })
-  );
-
-  return withContext;
+  const rankedPages = await getRankedPageActivityRows();
+  return hydrateDiscoveryPages(rankedPages.slice(0, limit));
 }
 
 export async function getRecommendedTakes(limit = 6): Promise<DiscoveryTake[]> {
-  const rows = await db
-    .select({
-      commentId: comments.id,
-      body: comments.body,
-      createdAt: comments.createdAt,
-      profileId: profiles.id,
-      profileHandle: profiles.handle,
-      pageId: pages.id,
-      pageKind: pages.pageKind,
-      pageTitle: pages.title,
-      canonicalUrl: pages.canonicalUrl,
-      helpfulCount: sql<number>`count(${commentHelpfulVotes.id})::int`
-    })
-    .from(comments)
-    .innerJoin(profiles, eq(profiles.id, comments.profileId))
-    .innerJoin(pages, eq(pages.id, comments.pageId))
-    .leftJoin(commentHelpfulVotes, eq(commentHelpfulVotes.commentId, comments.id))
-    .where(eq(comments.hidden, false))
-    .groupBy(
-      comments.id,
-      comments.body,
-      comments.createdAt,
-      profiles.id,
-      profiles.handle,
-      pages.id,
-      pages.pageKind,
-      pages.title,
-      pages.canonicalUrl
-    )
-    .orderBy(desc(sql<number>`count(${commentHelpfulVotes.id})::int`), desc(comments.createdAt))
-    .limit(Math.max(limit * 3, 24));
-
-  const reputationMap = await getContributorReputationMap(rows.map((row) => row.profileId));
-
-  return rows
-    .map((row) => ({
-      commentId: row.commentId,
-      body: row.body,
-      createdAt: row.createdAt.toISOString(),
-      helpfulCount: row.helpfulCount,
-      profileId: row.profileId,
-      profileHandle: row.profileHandle,
-      pageId: row.pageId,
-      pageKind: row.pageKind as PageSummary["pageKind"],
-      pageTitle: row.pageTitle,
-      canonicalUrl: row.canonicalUrl,
-      reputation: reputationMap.get(row.profileId) ?? defaultContributorReputation()
-    }))
-    .sort(
-      (left, right) =>
-        rankTakeLikeSignal({
-          helpfulCount: right.helpfulCount,
-          createdAt: right.createdAt,
-          reputationLevel: right.reputation?.level
-        }) -
-          rankTakeLikeSignal({
-            helpfulCount: left.helpfulCount,
-            createdAt: left.createdAt,
-            reputationLevel: left.reputation?.level
-          }) ||
-        new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
-    )
-    .slice(0, limit);
+  return (await getRankedTakeCandidates(Math.max(limit * 4, 24))).slice(0, limit);
 }
 
 export async function getPeopleToFollow(limit = 6, viewerProfileId?: string): Promise<DiscoveryProfile[]> {
@@ -710,7 +859,6 @@ export async function getPeopleToFollow(limit = 6, viewerProfileId?: string): Pr
 
   const commentCountMap = new Map(commentRows.map((row) => [row.profileId, row.count]));
   const followerCountMap = new Map(followerRows.map((row) => [row.profileId, row.count]));
-  const searchProfileReputationMap = await getContributorReputationMap(profileRows.map((row) => row.id));
   const followedIds = new Set(followedRows.map((row) => row.followeeProfileId));
   const viewerInterestTags = viewerRow ? coerceInterestTags(viewerRow.interestTags) : [];
 
@@ -910,6 +1058,338 @@ export async function searchDiscovery(query: string, limit = 6): Promise<Discove
       } satisfies DiscoveryProfile;
     })
   };
+}
+
+export async function getTopicSurface(
+  topic: InterestTag,
+  limit = 6
+): Promise<TopicSurface> {
+  const clusterTags = buildInterestCluster(topic, 5);
+  const clusterSet = new Set(clusterTags);
+  const [rankedPages, takeCandidates, profileData] = await Promise.all([
+    getRankedPageActivityRows(),
+    getRankedTakeCandidates(Math.max(limit * 10, 60)),
+    getProfileDiscoveryRows()
+  ]);
+
+  const trendingPages = (await hydrateDiscoveryPages(rankedPages.slice(0, Math.max(limit * 12, 72))))
+    .filter((page) => hasInterestOverlap(page.tags, clusterTags))
+    .slice(0, limit);
+
+  const takePageMap = await getDiscoveryPagesByIds(takeCandidates.map((take) => take.pageId));
+  const topicTakeCandidates = takeCandidates.filter((take) => {
+    const page = takePageMap.get(take.pageId);
+    return page ? hasInterestOverlap(page.tags, clusterTags) : false;
+  });
+  const topTakes = topicTakeCandidates.slice(0, limit);
+
+  const topicTakeStats = new Map<string, { takeCount: number; helpfulCount: number }>();
+  for (const take of topicTakeCandidates) {
+    const current = topicTakeStats.get(take.profileId) ?? { takeCount: 0, helpfulCount: 0 };
+    current.takeCount += 1;
+    current.helpfulCount += take.helpfulCount;
+    topicTakeStats.set(take.profileId, current);
+  }
+
+  const topContributors = profileData.profileRows
+    .filter((row) => Boolean(row.nullifierHash))
+    .map((row) => {
+      const interestTags = coerceInterestTags(row.interestTags);
+      const sharedInterestCount = countSharedInterestTags(interestTags, clusterTags);
+      const commentCount = profileData.commentCountMap.get(row.id) ?? 0;
+      const followerCount = profileData.followerCountMap.get(row.id) ?? 0;
+      const reputation = profileData.reputationMap.get(row.id) ?? defaultContributorReputation();
+      const topicStats = topicTakeStats.get(row.id) ?? { takeCount: 0, helpfulCount: 0 };
+
+      if (sharedInterestCount === 0 && topicStats.takeCount === 0) {
+        return null;
+      }
+
+      const reasonParts = [];
+      if (sharedInterestCount > 0) {
+        reasonParts.push(`Signals in ${formatInterestList(interestTags.filter((tag) => clusterSet.has(tag)))}`);
+      }
+      if (topicStats.takeCount > 0) {
+        reasonParts.push(
+          `${topicStats.takeCount} high-signal take${topicStats.takeCount === 1 ? "" : "s"} in this cluster`
+        );
+      }
+      reasonParts.push(reputation.description);
+
+      return {
+        id: row.id,
+        handle: row.handle,
+        verifiedHuman: true,
+        reputation,
+        interestTags,
+        commentCount,
+        followerCount,
+        sharedInterestCount,
+        reason: reasonParts.join(" • "),
+        score:
+          sharedInterestCount * 6 +
+          topicStats.takeCount * 8 +
+          topicStats.helpfulCount * 2 +
+          followerCount * 2 +
+          getReputationWeight(reputation.level)
+      };
+    })
+    .filter((profile): profile is DiscoveryProfile & { score: number } => Boolean(profile))
+    .sort((left, right) => right.score - left.score || right.commentCount - left.commentCount)
+    .slice(0, limit)
+    .map(({ score: _score, ...profile }) => profile);
+
+  return {
+    topic,
+    label: getInterestTagLabel(topic),
+    description: getInterestTagDescription(topic),
+    clusterTags,
+    relatedTopics: getRelatedInterestTags([topic], 6),
+    trendingPages,
+    topTakes,
+    topContributors
+  };
+}
+
+export async function getPeopleSimilarToFollowing(
+  profileId: string,
+  limit = 6
+): Promise<DiscoveryProfile[]> {
+  const [viewerRow, followedRows, profileData] = await Promise.all([
+    db.query.profiles.findFirst({
+      where: eq(profiles.id, profileId)
+    }),
+    db
+      .select({
+        followeeProfileId: follows.followeeProfileId
+      })
+      .from(follows)
+      .where(eq(follows.followerProfileId, profileId)),
+    getProfileDiscoveryRows(profileId)
+  ]);
+
+  if (!viewerRow || followedRows.length === 0) {
+    return [];
+  }
+
+  const followedIds = new Set(followedRows.map((row) => row.followeeProfileId));
+  const followedInterestRows = profileData.profileRows.filter((row) => followedIds.has(row.id));
+  const viewerInterestTags = coerceInterestTags(viewerRow.interestTags);
+  const followedInterestWeights = new Map<InterestTag, number>();
+
+  for (const followed of followedInterestRows) {
+    for (const tag of coerceInterestTags(followed.interestTags)) {
+      followedInterestWeights.set(tag, (followedInterestWeights.get(tag) ?? 0) + 1);
+    }
+  }
+
+  return profileData.profileRows
+    .filter((row) => Boolean(row.nullifierHash))
+    .filter((row) => !followedIds.has(row.id))
+    .map((row) => {
+      const interestTags = coerceInterestTags(row.interestTags);
+      const sharedViewerInterestCount = viewerInterestTags.filter((tag) => interestTags.includes(tag)).length;
+      const overlapScore = interestTags.reduce((sum, tag) => sum + (followedInterestWeights.get(tag) ?? 0), 0);
+      const commentCount = profileData.commentCountMap.get(row.id) ?? 0;
+      const followerCount = profileData.followerCountMap.get(row.id) ?? 0;
+      const reputation = profileData.reputationMap.get(row.id) ?? defaultContributorReputation();
+
+      if (overlapScore === 0 && sharedViewerInterestCount === 0) {
+        return null;
+      }
+
+      const matchingTags = interestTags.filter((tag) => followedInterestWeights.has(tag)).slice(0, 3);
+      const reasonParts = [];
+      if (matchingTags.length > 0) {
+        reasonParts.push(`Similar to who you follow on ${formatInterestList(matchingTags)}`);
+      }
+      if (sharedViewerInterestCount > 0) {
+        reasonParts.push("Also overlaps with your interests");
+      }
+      reasonParts.push(reputation.description);
+
+      return {
+        id: row.id,
+        handle: row.handle,
+        verifiedHuman: true,
+        reputation,
+        interestTags,
+        commentCount,
+        followerCount,
+        sharedInterestCount: sharedViewerInterestCount,
+        reason: reasonParts.join(" • "),
+        score:
+          overlapScore * 4 +
+          sharedViewerInterestCount * 3 +
+          commentCount * 2 +
+          followerCount * 2 +
+          getReputationWeight(reputation.level)
+      };
+    })
+    .filter((profile): profile is DiscoveryProfile & { score: number } => Boolean(profile))
+    .sort((left, right) => right.score - left.score || right.commentCount - left.commentCount)
+    .slice(0, limit)
+    .map(({ score: _score, ...profile }) => profile);
+}
+
+export async function getPagesBookmarkedByFollowedProfiles(
+  profileId: string,
+  limit = 6
+): Promise<FollowRecommendedPage[]> {
+  const [rows, mutedRows] = await Promise.all([
+    db
+      .select({
+        pageId: saves.pageId,
+        profileId: profiles.id,
+        handle: profiles.handle
+      })
+      .from(saves)
+      .innerJoin(
+        follows,
+        and(eq(follows.followeeProfileId, saves.profileId), eq(follows.followerProfileId, profileId))
+      )
+      .innerJoin(profiles, eq(profiles.id, saves.profileId)),
+    db
+      .select({
+        pageId: mutedPages.pageId
+      })
+      .from(mutedPages)
+      .where(eq(mutedPages.profileId, profileId))
+  ]);
+
+  const mutedPageIds = new Set(mutedRows.map((row) => row.pageId));
+  const pageSignals = new Map<string, { count: number; handles: string[] }>();
+
+  for (const row of rows) {
+    if (mutedPageIds.has(row.pageId)) continue;
+    const current = pageSignals.get(row.pageId) ?? { count: 0, handles: [] };
+    current.count += 1;
+    if (!current.handles.includes(row.handle)) {
+      current.handles.push(row.handle);
+    }
+    pageSignals.set(row.pageId, current);
+  }
+
+  if (pageSignals.size === 0) {
+    return [];
+  }
+
+  const pageMap = await getDiscoveryPagesByIds([...pageSignals.keys()]);
+
+  return [...pageSignals.entries()]
+    .map(([pageId, signal]) => {
+      const page = pageMap.get(pageId);
+      if (!page) return null;
+
+      const handlePreview = signal.handles.slice(0, 3).map((handle) => `@${handle}`).join(", ");
+
+      return {
+        ...page,
+        bookmarkedByCount: signal.count,
+        bookmarkedByHandles: signal.handles.slice(0, 5),
+        reason:
+          signal.count === 1
+            ? `Bookmarked by ${handlePreview}.`
+            : `Bookmarked by ${handlePreview}${signal.handles.length > 3 ? " and more" : ""}.`,
+        score: signal.count * 8 + page.activityScore
+      };
+    })
+    .filter((page): page is FollowRecommendedPage & { score: number } => Boolean(page))
+    .sort((left, right) => right.score - left.score || right.bookmarkedByCount - left.bookmarkedByCount)
+    .slice(0, limit)
+    .map(({ score: _score, ...page }) => page);
+}
+
+export async function getContributorsActiveInViewerInterests(
+  profileId: string,
+  limit = 6
+): Promise<DiscoveryProfile[]> {
+  const [viewerRow, followedRows, takeCandidates, profileData] = await Promise.all([
+    db.query.profiles.findFirst({
+      where: eq(profiles.id, profileId)
+    }),
+    db
+      .select({
+        followeeProfileId: follows.followeeProfileId
+      })
+      .from(follows)
+      .where(eq(follows.followerProfileId, profileId)),
+    getRankedTakeCandidates(Math.max(limit * 12, 72)),
+    getProfileDiscoveryRows(profileId)
+  ]);
+
+  if (!viewerRow) {
+    return [];
+  }
+
+  const viewerInterests = coerceInterestTags(viewerRow.interestTags);
+  if (viewerInterests.length === 0) {
+    return [];
+  }
+
+  const interestCluster = [...new Set(viewerInterests.flatMap((tag) => buildInterestCluster(tag, 2)))];
+  const followedIds = new Set(followedRows.map((row) => row.followeeProfileId));
+  const takePageMap = await getDiscoveryPagesByIds(takeCandidates.map((take) => take.pageId));
+  const interestTakeStats = new Map<string, { takeCount: number; helpfulCount: number }>();
+
+  for (const take of takeCandidates) {
+    const page = takePageMap.get(take.pageId);
+    if (!page || !hasInterestOverlap(page.tags, interestCluster)) {
+      continue;
+    }
+
+    const current = interestTakeStats.get(take.profileId) ?? { takeCount: 0, helpfulCount: 0 };
+    current.takeCount += 1;
+    current.helpfulCount += take.helpfulCount;
+    interestTakeStats.set(take.profileId, current);
+  }
+
+  return profileData.profileRows
+    .filter((row) => Boolean(row.nullifierHash))
+    .filter((row) => !followedIds.has(row.id))
+    .map((row) => {
+      const interestTags = coerceInterestTags(row.interestTags);
+      const sharedInterestCount = countSharedInterestTags(interestTags, interestCluster);
+      const topicStats = interestTakeStats.get(row.id) ?? { takeCount: 0, helpfulCount: 0 };
+      const commentCount = profileData.commentCountMap.get(row.id) ?? 0;
+      const followerCount = profileData.followerCountMap.get(row.id) ?? 0;
+      const reputation = profileData.reputationMap.get(row.id) ?? defaultContributorReputation();
+
+      if (sharedInterestCount === 0 && topicStats.takeCount === 0) {
+        return null;
+      }
+
+      const reasonParts = [];
+      if (sharedInterestCount > 0) {
+        reasonParts.push(`Declared interests overlap on ${formatInterestList(interestTags.filter((tag) => interestCluster.includes(tag)).slice(0, 3))}`);
+      }
+      if (topicStats.takeCount > 0) {
+        reasonParts.push(`Active with ${topicStats.takeCount} recent take${topicStats.takeCount === 1 ? "" : "s"} in your graph`);
+      }
+      reasonParts.push(reputation.description);
+
+      return {
+        id: row.id,
+        handle: row.handle,
+        verifiedHuman: true,
+        reputation,
+        interestTags,
+        commentCount,
+        followerCount,
+        sharedInterestCount,
+        reason: reasonParts.join(" • "),
+        score:
+          sharedInterestCount * 5 +
+          topicStats.takeCount * 8 +
+          topicStats.helpfulCount * 2 +
+          followerCount * 2 +
+          getReputationWeight(reputation.level)
+      };
+    })
+    .filter((profile): profile is DiscoveryProfile & { score: number } => Boolean(profile))
+    .sort((left, right) => right.score - left.score || right.commentCount - left.commentCount)
+    .slice(0, limit)
+    .map(({ score: _score, ...profile }) => profile);
 }
 
 export async function getOrCreateDevProfile(): Promise<{ id: string; handle: string }> {

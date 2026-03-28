@@ -36,6 +36,9 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               <Link className="top-nav-link" href="/">
                 Discover
               </Link>
+              <Link className="top-nav-link" href="/topics">
+                Topics
+              </Link>
               <Link className="top-nav-link" href="/verify">
                 Verify
               </Link>
@@ -74,6 +77,9 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             <div className="site-footer-links">
               <Link className="site-footer-link" href="/">
                 Discover
+              </Link>
+              <Link className="site-footer-link" href="/topics">
+                Topics
               </Link>
               <Link className="site-footer-link" href="/bookmarks">
                 Bookmarks
