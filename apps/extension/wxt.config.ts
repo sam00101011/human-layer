@@ -29,6 +29,9 @@ export default defineConfig({
     }
   },
   vite: () => ({
+    define: {
+      __HUMAN_LAYER_APP_URL__: JSON.stringify(appUrl)
+    },
     plugins: [react()]
   })
 });

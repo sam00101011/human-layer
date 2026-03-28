@@ -18,4 +18,13 @@ describe("appUrl config", () => {
       "https://human-layer-web.vercel.app"
     );
   });
+
+  it("prefers the injected build-time app URL when provided", () => {
+    expect(
+      resolveAppUrl(
+        { WXT_APP_URL: "http://127.0.0.1:4444", APP_URL: "http://127.0.0.1:3000" },
+        "https://human-layer-web.vercel.app"
+      )
+    ).toBe("https://human-layer-web.vercel.app");
+  });
 });
