@@ -52,6 +52,29 @@ describe("world id config", () => {
     await expect(verifyWorldIdSubmission({})).rejects.toBeInstanceOf(WorldIdVerificationError);
   });
 
+  it("rejects a placeholder verify URL in remote mode", async () => {
+    process.env.WORLD_ID_MODE = "remote";
+    process.env.WORLD_ID_APP_ID = "app_live_human_layer";
+    process.env.WORLD_ID_ACTION = "human-layer-v1";
+    process.env.WORLD_ID_SIGNAL = "human-layer-v1";
+    process.env.WORLD_ID_RP_ID = "rp_live_human_layer";
+    process.env.WORLD_ID_RP_PRIVATE_KEY =
+      "59c6995e998f97a5a0044976f6c9f7f6f8286f9ac2f1a9b0b1f4cb0c5b4c3b2a";
+    process.env.WORLD_ID_VERIFY_URL = "<fill-from-world-id-dashboard>";
+
+    await expect(
+      verifyWorldIdSubmission({
+        proof: "proof",
+        merkleRoot: "root",
+        nullifierHash: "nullifier"
+      })
+    ).rejects.toMatchObject({
+      name: "WorldIdVerificationError",
+      message: "WORLD_ID_VERIFY_URL is not configured",
+      status: 500
+    });
+  });
+
   it("creates a signed remote request context when live env vars are configured", () => {
     process.env.WORLD_ID_MODE = "remote";
     process.env.WORLD_ID_APP_ID = "app_live_human_layer";

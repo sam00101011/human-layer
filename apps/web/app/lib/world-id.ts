@@ -43,6 +43,20 @@ export class WorldIdVerificationError extends Error {
   }
 }
 
+function getConfiguredVerifyUrl(): string {
+  const verifyUrl = process.env.WORLD_ID_VERIFY_URL?.trim();
+
+  if (!verifyUrl || verifyUrl === "<fill-from-world-id-dashboard>") {
+    throw new WorldIdVerificationError("WORLD_ID_VERIFY_URL is not configured", 500);
+  }
+
+  try {
+    return new URL(verifyUrl).toString();
+  } catch {
+    throw new WorldIdVerificationError("WORLD_ID_VERIFY_URL is invalid", 500);
+  }
+}
+
 function inferEnvironment(appId: string): "production" | "staging" {
   return appId.includes("staging") ? "staging" : "production";
 }
@@ -128,10 +142,7 @@ export async function verifyWorldIdSubmission(
     throw new WorldIdVerificationError("missing World ID proof payload");
   }
 
-  const verifyUrl = process.env.WORLD_ID_VERIFY_URL;
-  if (!verifyUrl) {
-    throw new WorldIdVerificationError("WORLD_ID_VERIFY_URL is not configured", 500);
-  }
+  const verifyUrl = getConfiguredVerifyUrl();
 
   const response = await fetch(verifyUrl, {
     method: "POST",
