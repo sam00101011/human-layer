@@ -26,6 +26,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <Link className="top-nav-link" href="/verify">
                 Verify
               </Link>
+              <Link className="top-nav-link" href="/privacy">
+                Privacy
+              </Link>
+              <Link className="top-nav-link" href="/support">
+                Support
+              </Link>
               <Link className="top-nav-link" href="/dev-login">
                 Dev Login
               </Link>
@@ -33,6 +39,22 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           </div>
         </nav>
         {children}
+        <footer className="site-footer">
+          <div className="site-footer-inner">
+            <span className="site-footer-brand">Human Layer beta</span>
+            <div className="site-footer-links">
+              <Link className="site-footer-link" href="/privacy">
+                Privacy
+              </Link>
+              <Link className="site-footer-link" href="/terms">
+                Terms
+              </Link>
+              <Link className="site-footer-link" href="/support">
+                Support
+              </Link>
+            </div>
+          </div>
+        </footer>
       </body>
     </html>
   );

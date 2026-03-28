@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+  <title>Human Layer extension icon</title>
+  <rect x="8" y="8" width="112" height="112" rx="28" fill="#0f172a" />
+  <rect x="16" y="16" width="96" height="96" rx="24" fill="#ffd54f" />
+  <path
+    d="M38 34a5 5 0 0 1 5 5v13h12V39a5 5 0 1 1 10 0v38a5 5 0 1 1-10 0V62H43v15a5 5 0 1 1-10 0V39a5 5 0 0 1 5-5Z"
+    fill="#0f172a"
+  />
+  <path
+    d="M74 39a5 5 0 1 1 10 0v33h15a5 5 0 1 1 0 10H79a5 5 0 0 1-5-5V39Z"
+    fill="#0f172a"
+  />
+  <path
+    d="M26 94c9 6 23 10 38 10 15 0 29-4 38-10"
+    fill="none"
+    opacity="0.16"
+    stroke="#ffffff"
+    stroke-linecap="round"
+    stroke-width="6"
+  />
+</svg>

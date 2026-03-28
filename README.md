@@ -33,6 +33,7 @@ Deployment and production setup:
 - `FIRST-LAUNCH-CHECKLIST.md`
 - `PRODUCTION-DEPLOYMENT.md`
 - `PRODUCTION-RELEASE-CHECKLIST.md`
+- `CHROME-WEB-STORE-BETA.md`
 - `PROVIDER-SETUP.md`
 - `apps/web/.env.production.example`
 - `apps/extension/.env.production.example`
