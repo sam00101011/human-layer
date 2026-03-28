@@ -37,8 +37,19 @@ WXT_APP_URL="<APP_BASE_URL>" APP_URL="<APP_BASE_URL>" corepack pnpm --filter @hu
 
 Use the same hosted base URL for both variables.
 
+For a one-command release artifact that can also bump the version, use:
+
+    cd "/Users/samuelzeller/conductor/human layer"
+    corepack pnpm release:extension -- --app-url "<APP_BASE_URL>" --version 0.1.1
+
+If you omit `--version`, the script uses the current extension version from [package.json](/Users/samuelzeller/conductor/human%20layer/apps/extension/package.json).
+
 The production Chrome bundle will be written to:
 - [chrome-mv3](/Users/samuelzeller/conductor/human%20layer/apps/extension/.output/chrome-mv3)
+
+The release script also writes:
+- a zip artifact to [release-artifacts](/Users/samuelzeller/conductor/human%20layer/release-artifacts)
+- a matching metadata JSON file with version, commit SHA, app URL, and build timestamp
 
 Done when:
 - the build finishes successfully

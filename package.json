@@ -6,6 +6,7 @@
     "dev:web": "corepack pnpm --filter @human-layer/web dev",
     "dev:extension": "WXT_APP_URL=http://127.0.0.1:3000 corepack pnpm --filter @human-layer/extension dev",
     "dev:reset": "corepack pnpm exec tsx scripts/dev-reset.ts",
+    "release:extension": "corepack pnpm exec tsx scripts/release-extension.ts",
     "build": "corepack pnpm --filter @human-layer/core build && corepack pnpm --filter @human-layer/db build && corepack pnpm --filter @human-layer/web build && corepack pnpm --filter @human-layer/extension build",
     "smoke:overlay": "corepack pnpm exec tsx scripts/smoke-overlay.ts",
     "test": "corepack pnpm --filter @human-layer/core test && corepack pnpm --filter @human-layer/db test && corepack pnpm --filter @human-layer/web test && corepack pnpm --filter @human-layer/extension test",
