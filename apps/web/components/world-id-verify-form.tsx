@@ -1,6 +1,12 @@
 "use client";
 
-import { INTEREST_TAGS, MAX_PROFILE_INTERESTS } from "@human-layer/core";
+import {
+  getInterestTagLabel,
+  getRelatedInterestTags,
+  INTEREST_GROUPS,
+  MAX_PROFILE_INTERESTS,
+  type InterestTag
+} from "@human-layer/core";
 import {
   IDKitRequestWidget,
   deviceLegacy,
@@ -52,7 +58,7 @@ export function WorldIdVerifyForm({
   const [isPending, startTransition] = useTransition();
   const [isCheckingExistingSession, setIsCheckingExistingSession] = useState(handoff);
   const [handle, setHandle] = useState("");
-  const [selectedTags, setSelectedTags] = useState<string[]>(["devtools", "research"]);
+  const [selectedTags, setSelectedTags] = useState<InterestTag[]>(["devtools", "research"]);
   const [mockHumanKey, setMockHumanKey] = useState("");
   const [verificationLevel, setVerificationLevel] = useState<"orb" | "device">("orb");
   const [requestConfig, setRequestConfig] = useState<WorldIdRequestConfig | null>(null);
@@ -108,13 +114,14 @@ export function WorldIdVerifyForm({
     };
   }, [handoff, returnUrl, router]);
 
-  function toggleTag(tag: string) {
+  function toggleTag(tag: InterestTag) {
     setSelectedTags((current) => {
       if (current.includes(tag)) {
         return current.filter((value) => value !== tag);
       }
 
       if (current.length >= MAX_PROFILE_INTERESTS) {
+        setStatusMessage(`Pick up to ${MAX_PROFILE_INTERESTS} interests for now.`);
         return current;
       }
 
@@ -274,6 +281,10 @@ export function WorldIdVerifyForm({
     worldIdConfig.mode === "mock"
       ? "Verify and create profile"
       : "Continue with World ID";
+  const relatedSuggestions =
+    selectedTags.length >= MAX_PROFILE_INTERESTS
+      ? []
+      : getRelatedInterestTags(selectedTags, Math.min(10, MAX_PROFILE_INTERESTS + 2));
 
   return (
     <section className="card stack">
@@ -313,22 +324,79 @@ export function WorldIdVerifyForm({
       <div className="field">
         <span>Interests</span>
         <div className="chip-row">
-          {INTEREST_TAGS.map((interestTag) => {
-            const selected = selectedTags.includes(interestTag);
-            return (
+          {selectedTags.map((interestTag) => (
+            <button
+              className="chip active"
+              key={interestTag}
+              onClick={() => toggleTag(interestTag)}
+              type="button"
+            >
+              {getInterestTagLabel(interestTag)}
+            </button>
+          ))}
+        </div>
+        <span className="helper">
+          Pick up to {MAX_PROFILE_INTERESTS}. These shape your Human Graph identity and power discovery.
+        </span>
+      </div>
+
+      <div className="field">
+        <span>{selectedTags.length > 0 ? "Suggested next interests" : "Popular starting points"}</span>
+        <div className="interest-suggestion-card">
+          <p className="helper">
+            {selectedTags.length > 0
+              ? `Because you picked ${selectedTags.map((tag) => getInterestTagLabel(tag)).join(", ")}, you may also care about:`
+              : "Start with a few broad interests, then Human Layer will suggest adjacent ones like an audience builder."}
+          </p>
+          <div className="chip-row">
+            {relatedSuggestions.map((interestTag) => (
               <button
-                className={selected ? "chip active" : "chip"}
+                className="chip chip-suggested"
                 key={interestTag}
                 onClick={() => toggleTag(interestTag)}
                 type="button"
               >
-                {interestTag}
+                {getInterestTagLabel(interestTag)}
               </button>
-            );
-          })}
+            ))}
+          </div>
+          {selectedTags.length >= MAX_PROFILE_INTERESTS ? (
+            <span className="helper">
+              You are at the current limit. Remove one selected interest to explore more related suggestions.
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="field">
+        <span>Browse the interest graph</span>
+        <div className="interest-group-grid">
+          {INTEREST_GROUPS.map((group) => (
+            <section className="interest-group-card" key={group.id}>
+              <div className="stack compact">
+                <strong>{group.label}</strong>
+                <span className="helper">{group.description}</span>
+              </div>
+              <div className="chip-row">
+                {group.tags.map((interestTag) => {
+                  const selected = selectedTags.includes(interestTag);
+                  return (
+                    <button
+                      className={selected ? "chip active" : "chip"}
+                      key={interestTag}
+                      onClick={() => toggleTag(interestTag)}
+                      type="button"
+                    >
+                      {getInterestTagLabel(interestTag)}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
         </div>
         <span className="helper">
-          Pick up to {MAX_PROFILE_INTERESTS}. These power the first version of the Human Graph.
+          Click any interest and the graph will suggest more adjacent ones, similar to audience expansion.
         </span>
       </div>
 

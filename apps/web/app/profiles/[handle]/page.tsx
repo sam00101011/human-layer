@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getProfileSnapshotByHandle } from "@human-layer/db";
+import { getInterestTagLabel } from "@human-layer/core";
 import { notFound } from "next/navigation";
 
 import { ReportCommentButton } from "../../../components/report-comment-button";
@@ -45,7 +46,7 @@ function buildTrustSignals(profile: NonNullable<Awaited<ReturnType<typeof getPro
       ? "Contribution history is timestamped below so readers can inspect how this profile participates over time."
       : "This profile does not have public contribution history yet.",
     profile.interestTags.length
-      ? `Most active around ${profile.interestTags.slice(0, 3).join(", ")}.`
+      ? `Most active around ${profile.interestTags.slice(0, 3).map((tag) => getInterestTagLabel(tag)).join(", ")}.`
       : "No declared interest tags yet."
   ];
 
@@ -94,7 +95,7 @@ export default async function ProfilePage(props: {
           <div className="chip-row">
             {profile.interestTags.map((interestTag) => (
               <span className="chip" key={interestTag}>
-                {interestTag}
+                {getInterestTagLabel(interestTag)}
               </span>
             ))}
           </div>

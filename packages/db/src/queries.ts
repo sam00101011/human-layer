@@ -1,6 +1,7 @@
 import {
   buildPageContextSummary,
   EMPTY_VERDICT_COUNTS,
+  getInterestTagLabel,
   INTEREST_TAGS,
   MAX_PROFILE_INTERESTS,
   SUPPORTED_DOMAIN_RULES,
@@ -160,7 +161,7 @@ function mapStoredProfile(row: {
 }
 
 function formatInterestList(tags: InterestTag[]) {
-  return tags.slice(0, 3).join(", ");
+  return tags.slice(0, 3).map((tag) => getInterestTagLabel(tag)).join(", ");
 }
 
 function defaultContributorReputation() {

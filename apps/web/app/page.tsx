@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getInterestTagLabel } from "@human-layer/core";
 import {
   getPeopleToFollow,
   getRecommendedTakes,
@@ -183,7 +184,7 @@ export default async function HomePage(props: {
                           </span>
                           {profile.interestTags.map((tag) => (
                             <span className="chip" key={tag}>
-                              {tag}
+                              {getInterestTagLabel(tag)}
                             </span>
                           ))}
                         </div>
@@ -291,7 +292,7 @@ export default async function HomePage(props: {
                 </span>
                 {profile.interestTags.map((tag) => (
                   <span className="chip" key={tag}>
-                    {tag}
+                    {getInterestTagLabel(tag)}
                   </span>
                 ))}
               </div>

@@ -116,12 +116,46 @@ export const INTEREST_TAGS = [
   "startups",
   "markets",
   "governance",
-  "infra"
+  "infra",
+  "llms",
+  "ml",
+  "data",
+  "analytics",
+  "automation",
+  "robotics",
+  "bio",
+  "apis",
+  "backend",
+  "frontend",
+  "fullstack",
+  "mobile",
+  "cloud",
+  "databases",
+  "observability",
+  "privacy",
+  "ux",
+  "product",
+  "creator_tools",
+  "saas",
+  "enterprise",
+  "growth",
+  "ads",
+  "seo",
+  "sales",
+  "marketplaces",
+  "ecommerce",
+  "communities",
+  "media",
+  "education",
+  "fintech",
+  "defi",
+  "trading",
+  "gaming"
 ] as const;
 
 export type InterestTag = (typeof INTEREST_TAGS)[number];
 
-export const MAX_PROFILE_INTERESTS = 5;
+export const MAX_PROFILE_INTERESTS = 8;
 
 export type RolloutStage = "phase_0" | "later_v1";
 export type MatchStrategy = "path_prefix" | "query_param" | "db_known_external";
