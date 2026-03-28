@@ -34,6 +34,10 @@ function isErrorResponsePayload(value: unknown): value is ErrorResponsePayload {
   return typeof value === "object" && value !== null;
 }
 
+export function buildVerifyUrl(appUrl: string, currentUrl: string): string {
+  return `${appUrl}/verify?handoff=1&returnUrl=${encodeURIComponent(currentUrl)}`;
+}
+
 export function OverlayController({
   initialLookup,
   currentUrl,
@@ -92,12 +96,9 @@ export function OverlayController({
   }
 
   function openVerify() {
-    const returnUrl = encodeURIComponent(currentUrl);
-    window.open(
-      `${appUrl}/verify?handoff=1&returnUrl=${returnUrl}`,
-      "_blank",
-      "popup=yes,width=480,height=720"
-    );
+    // Open a regular tab-sized window so the World ID widget stays in its desktop QR flow.
+    // A narrow popup makes IDKit render the mobile deep-link path instead.
+    window.open(buildVerifyUrl(appUrl, currentUrl), "_blank");
   }
 
   function openPage(pageId: string) {
