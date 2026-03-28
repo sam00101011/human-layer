@@ -9,11 +9,30 @@ export const PAGE_KINDS = [
   "gitlab_project",
   "gitlab_issue",
   "gitlab_merge_request",
+  "github_discussion",
+  "github_release",
+  "gitlab_epic",
   "hugging_face_model",
   "hugging_face_dataset",
   "hugging_face_space",
   "npm_package",
   "pypi_package",
+  "reddit_thread",
+  "youtube_video",
+  "chrome_web_store_item",
+  "figma_community_resource",
+  "issue_page",
+  "feedback_post",
+  "event_page",
+  "registry_package",
+  "package_comparison_page",
+  "model_page",
+  "showcase_page",
+  "kaggle_resource",
+  "notebook_page",
+  "publication_page",
+  "wikipedia_article",
+  "gist_snippet",
   "docs_page",
   "blog_post"
 ] as const;
@@ -31,11 +50,31 @@ export const PHASE_0_PAGE_KINDS = [
   "gitlab_project",
   "gitlab_issue",
   "gitlab_merge_request",
+  "github_discussion",
+  "github_release",
+  "gitlab_epic",
   "hugging_face_model",
   "hugging_face_dataset",
   "hugging_face_space",
   "npm_package",
   "pypi_package",
+  "reddit_thread",
+  "youtube_video",
+  "chrome_web_store_item",
+  "figma_community_resource",
+  "issue_page",
+  "feedback_post",
+  "event_page",
+  "registry_package",
+  "package_comparison_page",
+  "model_page",
+  "showcase_page",
+  "kaggle_resource",
+  "notebook_page",
+  "publication_page",
+  "wikipedia_article",
+  "gist_snippet",
+  "docs_page",
   "blog_post"
 ] as const satisfies readonly PageKind[];
 
@@ -87,11 +126,31 @@ export type NormalizerName =
   | "gitlabProject"
   | "gitlabIssue"
   | "gitlabMergeRequest"
+  | "githubDiscussion"
+  | "githubRelease"
+  | "gitlabEpic"
   | "huggingFaceModel"
   | "huggingFaceDataset"
   | "huggingFaceSpace"
   | "npmPackage"
   | "pypiPackage"
+  | "redditThread"
+  | "youtubeVideo"
+  | "chromeWebStoreItem"
+  | "figmaCommunityResource"
+  | "issuePage"
+  | "feedbackPost"
+  | "eventPage"
+  | "registryPackage"
+  | "packageComparisonPage"
+  | "modelPage"
+  | "showcasePage"
+  | "kaggleResource"
+  | "notebookPage"
+  | "publicationPage"
+  | "wikipediaArticle"
+  | "gistSnippet"
+  | "docsPage"
   | "blogPost";
 
 export type SupportedDomainRule = {

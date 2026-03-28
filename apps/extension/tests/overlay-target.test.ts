@@ -31,6 +31,30 @@ describe("getOverlayTarget", () => {
     expect(getOverlayTarget("https://dev.to/addyosmani/modern-page-speed-1l2n")?.pageKind).toBe(
       "blog_post"
     );
+    expect(getOverlayTarget("https://www.reddit.com/r/reactjs/comments/1abcde/big_release/")?.pageKind).toBe(
+      "reddit_thread"
+    );
+    expect(getOverlayTarget("https://www.youtube.com/watch?v=dQw4w9WgXcQ")?.pageKind).toBe(
+      "youtube_video"
+    );
+    expect(getOverlayTarget("https://chromewebstore.google.com/detail/human-layer/abcdefghijklmnop")?.pageKind).toBe(
+      "chrome_web_store_item"
+    );
+    expect(getOverlayTarget("https://linear.app/acme/issue/HL-101/fix-the-overlay")?.pageKind).toBe(
+      "issue_page"
+    );
+    expect(getOverlayTarget("https://hub.docker.com/r/library/nginx")?.pageKind).toBe(
+      "registry_package"
+    );
+    expect(getOverlayTarget("https://observablehq.com/@d3/bar-chart")?.pageKind).toBe(
+      "notebook_page"
+    );
+    expect(getOverlayTarget("https://en.wikipedia.org/wiki/Next.js")?.pageKind).toBe(
+      "wikipedia_article"
+    );
+    expect(getOverlayTarget("https://gist.github.com/gaearon/91df0df1")?.pageKind).toBe(
+      "gist_snippet"
+    );
   });
 
   it("rejects unsupported GitHub paths", () => {

@@ -137,13 +137,214 @@ export const SUPPORTED_DOMAIN_RULES: SupportedDomainRule[] = [
     rolloutStage: "phase_0"
   },
   {
+    id: "github-discussion",
+    enabled: true,
+    hosts: ["github.com"],
+    pageKind: "github_discussion",
+    matchStrategy: "path_prefix",
+    normalizer: "githubDiscussion",
+    rolloutStage: "phase_0"
+  },
+  {
+    id: "github-release",
+    enabled: true,
+    hosts: ["github.com"],
+    pageKind: "github_release",
+    matchStrategy: "path_prefix",
+    normalizer: "githubRelease",
+    rolloutStage: "phase_0"
+  },
+  {
+    id: "gitlab-epic",
+    enabled: true,
+    hosts: ["gitlab.com"],
+    pageKind: "gitlab_epic",
+    matchStrategy: "path_prefix",
+    normalizer: "gitlabEpic",
+    rolloutStage: "phase_0"
+  },
+  {
+    id: "reddit-thread",
+    enabled: true,
+    hosts: ["www.reddit.com", "reddit.com", "old.reddit.com"],
+    pageKind: "reddit_thread",
+    matchStrategy: "path_prefix",
+    normalizer: "redditThread",
+    rolloutStage: "phase_0"
+  },
+  {
+    id: "youtube-video",
+    enabled: true,
+    hosts: ["www.youtube.com", "youtube.com", "youtu.be"],
+    pageKind: "youtube_video",
+    matchStrategy: "query_param",
+    normalizer: "youtubeVideo",
+    rolloutStage: "phase_0"
+  },
+  {
+    id: "chrome-web-store-item",
+    enabled: true,
+    hosts: ["chromewebstore.google.com"],
+    pageKind: "chrome_web_store_item",
+    matchStrategy: "path_prefix",
+    normalizer: "chromeWebStoreItem",
+    rolloutStage: "phase_0"
+  },
+  {
+    id: "figma-community-resource",
+    enabled: true,
+    hosts: ["www.figma.com", "figma.com"],
+    pageKind: "figma_community_resource",
+    matchStrategy: "path_prefix",
+    normalizer: "figmaCommunityResource",
+    rolloutStage: "phase_0"
+  },
+  {
+    id: "issue-page",
+    enabled: true,
+    hosts: ["linear.app", "*.atlassian.net"],
+    pageKind: "issue_page",
+    matchStrategy: "path_prefix",
+    normalizer: "issuePage",
+    rolloutStage: "phase_0"
+  },
+  {
+    id: "feedback-post",
+    enabled: true,
+    hosts: ["canny.io", "*.canny.io"],
+    pageKind: "feedback_post",
+    matchStrategy: "path_prefix",
+    normalizer: "feedbackPost",
+    rolloutStage: "phase_0"
+  },
+  {
+    id: "event-page",
+    enabled: true,
+    hosts: ["lu.ma"],
+    pageKind: "event_page",
+    matchStrategy: "path_prefix",
+    normalizer: "eventPage",
+    rolloutStage: "phase_0"
+  },
+  {
+    id: "registry-package",
+    enabled: true,
+    hosts: [
+      "hub.docker.com",
+      "artifacthub.io",
+      "registry.terraform.io",
+      "search.maven.org",
+      "www.nuget.org",
+      "nuget.org",
+      "packagist.org",
+      "rubygems.org",
+      "crates.io",
+      "pkg.go.dev",
+      "hackage.haskell.org",
+      "metacpan.org"
+    ],
+    pageKind: "registry_package",
+    matchStrategy: "path_prefix",
+    normalizer: "registryPackage",
+    rolloutStage: "phase_0"
+  },
+  {
+    id: "package-comparison-page",
+    enabled: true,
+    hosts: ["npmtrends.com"],
+    pageKind: "package_comparison_page",
+    matchStrategy: "path_prefix",
+    normalizer: "packageComparisonPage",
+    rolloutStage: "phase_0"
+  },
+  {
+    id: "model-page",
+    enabled: true,
+    hosts: ["replicate.com"],
+    pageKind: "model_page",
+    matchStrategy: "path_prefix",
+    normalizer: "modelPage",
+    rolloutStage: "phase_0"
+  },
+  {
+    id: "showcase-page",
+    enabled: true,
+    hosts: ["v0.dev", "lovable.dev", "bolt.new"],
+    pageKind: "showcase_page",
+    matchStrategy: "path_prefix",
+    normalizer: "showcasePage",
+    rolloutStage: "phase_0"
+  },
+  {
+    id: "kaggle-resource",
+    enabled: true,
+    hosts: ["www.kaggle.com", "kaggle.com"],
+    pageKind: "kaggle_resource",
+    matchStrategy: "path_prefix",
+    normalizer: "kaggleResource",
+    rolloutStage: "phase_0"
+  },
+  {
+    id: "notebook-page",
+    enabled: true,
+    hosts: [
+      "observablehq.com",
+      "colab.research.google.com",
+      "codesandbox.io",
+      "stackblitz.com",
+      "replit.com"
+    ],
+    pageKind: "notebook_page",
+    matchStrategy: "path_prefix",
+    normalizer: "notebookPage",
+    rolloutStage: "phase_0"
+  },
+  {
+    id: "publication-page",
+    enabled: true,
+    hosts: ["dev.to", "hashnode.com", "substack.com", "*.substack.com"],
+    pageKind: "publication_page",
+    matchStrategy: "path_prefix",
+    normalizer: "publicationPage",
+    rolloutStage: "phase_0"
+  },
+  {
+    id: "wikipedia-article",
+    enabled: true,
+    hosts: ["*.wikipedia.org"],
+    pageKind: "wikipedia_article",
+    matchStrategy: "path_prefix",
+    normalizer: "wikipediaArticle",
+    rolloutStage: "phase_0"
+  },
+  {
+    id: "gist-snippet",
+    enabled: true,
+    hosts: ["gist.github.com"],
+    pageKind: "gist_snippet",
+    matchStrategy: "path_prefix",
+    normalizer: "gistSnippet",
+    rolloutStage: "phase_0"
+  },
+  {
     id: "docs-pages",
-    enabled: false,
-    hosts: [],
+    enabled: true,
+    hosts: [
+      "www.notion.so",
+      "*.notion.site",
+      "*.readme.io",
+      "*.mintlify.app",
+      "*.gitbook.io",
+      "*.docusaurus.io",
+      "*.atlassian.net",
+      "docs.google.com",
+      "sourcegraph.com",
+      "modal.com"
+    ],
     pageKind: "docs_page",
-    matchStrategy: "db_known_external",
-    normalizer: "hnLinkedUrl",
-    rolloutStage: "later_v1"
+    matchStrategy: "path_prefix",
+    normalizer: "docsPage",
+    rolloutStage: "phase_0"
   },
   {
     id: "blog-posts",
@@ -154,7 +355,13 @@ export const SUPPORTED_DOMAIN_RULES: SupportedDomainRule[] = [
       "*.medium.com",
       "hashnode.com",
       "*.hashnode.dev",
-      "*.substack.com"
+      "*.substack.com",
+      "linear.app",
+      "mirror.xyz",
+      "hackernoon.com",
+      "www.infoq.com",
+      "www.smashingmagazine.com",
+      "css-tricks.com"
     ],
     pageKind: "blog_post",
     matchStrategy: "path_prefix",

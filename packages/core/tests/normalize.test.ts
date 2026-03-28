@@ -34,7 +34,7 @@ describe("normalizeUrl", () => {
 
   it("rejects unsupported GitHub paths", () => {
     expect(normalizeUrl("https://github.com/vercel")).toBeNull();
-    expect(normalizeUrl("https://github.com/vercel/next.js/discussions")).toBeNull();
+    expect(normalizeUrl("https://github.com/vercel/next.js/actions")).toBeNull();
   });
 
   it("normalizes Hacker News item URLs", () => {
@@ -144,5 +144,109 @@ describe("normalizeUrl", () => {
     expect(
       normalizeUrl("https://medium.com/@dan_abramov/before-you-memo-3c2abf7af0d2")?.pageKind
     ).toBe("blog_post");
+  });
+
+  it("normalizes GitHub discussions, releases, and gists", () => {
+    expect(normalizeUrl("https://github.com/vercel/next.js/discussions/777")?.pageKind).toBe(
+      "github_discussion"
+    );
+    expect(normalizeUrl("https://github.com/vercel/next.js/releases/tag/v16.0.0")?.pageKind).toBe(
+      "github_release"
+    );
+    expect(normalizeUrl("https://gist.github.com/gaearon/91df0df1")?.pageKind).toBe("gist_snippet");
+  });
+
+  it("normalizes Reddit and YouTube pages", () => {
+    expect(
+      normalizeUrl("https://www.reddit.com/r/reactjs/comments/1abcde/big_release/")?.pageKind
+    ).toBe("reddit_thread");
+    expect(normalizeUrl("https://youtu.be/dQw4w9WgXcQ")?.canonicalUrl).toBe(
+      "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    );
+  });
+
+  it("normalizes Chrome Web Store and Figma Community resources", () => {
+    expect(
+      normalizeUrl("https://chromewebstore.google.com/detail/human-layer/abcdefghijklmnop")
+        ?.pageKind
+    ).toBe("chrome_web_store_item");
+    expect(
+      normalizeUrl("https://www.figma.com/community/file/1234567890/sample-community-file")
+        ?.pageKind
+    ).toBe("figma_community_resource");
+  });
+
+  it("normalizes docs-like surfaces", () => {
+    expect(normalizeUrl("https://workspace.readme.io/reference/getting-started")?.pageKind).toBe(
+      "docs_page"
+    );
+    expect(normalizeUrl("https://app.mintlify.app/getting-started/overview")?.pageKind).toBe(
+      "docs_page"
+    );
+    expect(normalizeUrl("https://team.gitbook.io/docs/introduction")?.pageKind).toBe("docs_page");
+    expect(
+      normalizeUrl("https://company.atlassian.net/wiki/spaces/ENG/pages/12345678/Runbook")
+        ?.pageKind
+    ).toBe("docs_page");
+    expect(normalizeUrl("https://docs.google.com/document/d/abc123456789/edit")?.pageKind).toBe(
+      "docs_page"
+    );
+  });
+
+  it("normalizes issue, feedback, and event pages", () => {
+    expect(normalizeUrl("https://linear.app/acme/issue/HL-101/fix-the-overlay")?.pageKind).toBe(
+      "issue_page"
+    );
+    expect(normalizeUrl("https://acme.canny.io/feature-requests/p/add-more-sites")?.pageKind).toBe(
+      "feedback_post"
+    );
+    expect(normalizeUrl("https://lu.ma/ship-week")?.pageKind).toBe("event_page");
+  });
+
+  it("normalizes more registry surfaces", () => {
+    expect(normalizeUrl("https://hub.docker.com/r/library/nginx")?.pageKind).toBe(
+      "registry_package"
+    );
+    expect(
+      normalizeUrl("https://registry.terraform.io/providers/hashicorp/aws/latest")?.pageKind
+    ).toBe("registry_package");
+    expect(normalizeUrl("https://search.maven.org/artifact/org.slf4j/slf4j-api")?.pageKind).toBe(
+      "registry_package"
+    );
+    expect(normalizeUrl("https://www.nuget.org/packages/Newtonsoft.Json")?.pageKind).toBe(
+      "registry_package"
+    );
+    expect(normalizeUrl("https://npmtrends.com/compare/react-vs-vue")?.pageKind).toBe(
+      "package_comparison_page"
+    );
+  });
+
+  it("normalizes replicate, showcase, kaggle, and notebook pages", () => {
+    expect(normalizeUrl("https://replicate.com/black-forest-labs/flux-schnell")?.pageKind).toBe(
+      "model_page"
+    );
+    expect(normalizeUrl("https://lovable.dev/projects/abc123")?.pageKind).toBe("showcase_page");
+    expect(normalizeUrl("https://www.kaggle.com/datasets/startupsci/titanic-data-set")?.pageKind).toBe(
+      "kaggle_resource"
+    );
+    expect(normalizeUrl("https://observablehq.com/@d3/bar-chart")?.pageKind).toBe(
+      "notebook_page"
+    );
+    expect(normalizeUrl("https://replit.com/@sam00101011/hello-human-layer")?.pageKind).toBe(
+      "notebook_page"
+    );
+  });
+
+  it("normalizes publications, more blogs, wikipedia, and gists", () => {
+    expect(normalizeUrl("https://dev.to/vercel")?.pageKind).toBe("publication_page");
+    expect(normalizeUrl("https://samstack.substack.com")?.pageKind).toBe("publication_page");
+    expect(normalizeUrl("https://mirror.xyz/0xabc/def")?.pageKind).toBe("blog_post");
+    expect(normalizeUrl("https://hackernoon.com/how-to-ship-agents")?.pageKind).toBe("blog_post");
+    expect(normalizeUrl("https://en.wikipedia.org/wiki/Next.js")?.pageKind).toBe(
+      "wikipedia_article"
+    );
+    expect(normalizeUrl("https://gist.github.com/gaearon/91df0df1")?.pageKind).toBe(
+      "gist_snippet"
+    );
   });
 });
