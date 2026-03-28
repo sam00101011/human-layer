@@ -1,4 +1,5 @@
 import { INTEREST_TAGS, MAX_PROFILE_INTERESTS, type InterestTag } from "@human-layer/core";
+import type { IDKitResult } from "@worldcoin/idkit";
 import {
   HandleTakenError,
   createSessionForProfile,
@@ -23,6 +24,7 @@ type VerifyBody = {
   handoff?: boolean;
   returnUrl?: string;
   mockHumanKey?: string;
+  worldIdResult?: IDKitResult | null;
   proof?: string;
   merkleRoot?: string;
   nullifierHash?: string;
@@ -30,6 +32,19 @@ type VerifyBody = {
   verificationLevel?: "orb" | "device";
   signal?: string | null;
 };
+
+function serializeVerifyError(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message
+    };
+  }
+
+  return {
+    message: String(error)
+  };
+}
 
 function normalizeInterestTags(value: unknown): InterestTag[] {
   if (!Array.isArray(value)) return [];
@@ -63,6 +78,7 @@ export async function POST(request: NextRequest) {
   try {
     const verification = await verifyWorldIdSubmission({
       mockHumanKey: body?.mockHumanKey,
+      result: body?.worldIdResult,
       proof: body?.proof,
       merkleRoot: body?.merkleRoot,
       nullifierHash: body?.nullifierHash,
@@ -99,14 +115,35 @@ export async function POST(request: NextRequest) {
     response.cookies.set(getSessionCookieName(), rawToken, getSessionCookieOptions());
     return response;
   } catch (error) {
+    const requestId = crypto.randomUUID();
+
+    console.error(
+      JSON.stringify({
+        event: "world_id_verify_failed",
+        route: request.nextUrl.pathname,
+        method: request.method,
+        requestId,
+        handle,
+        handoff: body?.handoff ?? false,
+        verificationLevel: body?.verificationLevel ?? null,
+        protocolVersion: body?.worldIdResult?.protocol_version ?? null,
+        hasProof: Boolean(body?.proof),
+        hasMerkleRoot: Boolean(body?.merkleRoot),
+        hasNullifierHash: Boolean(body?.nullifierHash),
+        hasSignalHash: Boolean(body?.signalHash),
+        hasWorldIdResult: Boolean(body?.worldIdResult),
+        error: serializeVerifyError(error)
+      })
+    );
+
     if (error instanceof HandleTakenError) {
-      return NextResponse.json({ error: error.message }, { status: 409 });
+      return NextResponse.json({ error: error.message, requestId }, { status: 409 });
     }
 
     if (error instanceof WorldIdVerificationError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
+      return NextResponse.json({ error: error.message, requestId }, { status: error.status });
     }
 
-    return NextResponse.json({ error: "verification failed" }, { status: 500 });
+    return NextResponse.json({ error: "verification failed", requestId }, { status: 500 });
   }
 }

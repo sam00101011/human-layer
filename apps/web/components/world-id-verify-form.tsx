@@ -46,6 +46,7 @@ export function WorldIdVerifyForm({
 }: WorldIdVerifyFormProps) {
   const router = useRouter();
   const redirectRef = useRef<string | null>(null);
+  const verifyFailureMessageRef = useRef<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [handle, setHandle] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>(["devtools", "research"]);
@@ -95,6 +96,7 @@ export function WorldIdVerifyForm({
   }
 
   async function submitVerification(params: {
+    worldIdResult?: IDKitResult;
     proof?: string;
     merkleRoot?: string;
     nullifierHash?: string;
@@ -114,6 +116,7 @@ export function WorldIdVerifyForm({
         handoff,
         returnUrl,
         mockHumanKey: params.mockHumanKey,
+        worldIdResult: params.worldIdResult,
         proof: params.proof,
         merkleRoot: params.merkleRoot,
         nullifierHash: params.nullifierHash,
@@ -166,8 +169,17 @@ export function WorldIdVerifyForm({
 
   async function handleIdKitVerify(result: IDKitResult) {
     try {
-      const payload = extractLegacyProofPayload(result);
+      const payload =
+        result.protocol_version === "3.0"
+          ? extractLegacyProofPayload(result)
+          : {
+              proof: undefined,
+              merkleRoot: undefined,
+              nullifierHash: undefined,
+              signalHash: undefined
+            };
       redirectRef.current = await submitVerification({
+        worldIdResult: result,
         proof: payload.proof,
         merkleRoot: payload.merkleRoot,
         nullifierHash: payload.nullifierHash,
@@ -175,8 +187,10 @@ export function WorldIdVerifyForm({
         verificationLevel,
         signal: worldIdConfig.signal
       });
+      verifyFailureMessageRef.current = null;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Verification failed.";
+      verifyFailureMessageRef.current = message;
       setStatusMessage(message);
       throw error;
     }
@@ -322,9 +336,19 @@ export function WorldIdVerifyForm({
           environment={requestConfig.environment}
           handleVerify={handleIdKitVerify}
           onError={(errorCode) => {
+            if (verifyFailureMessageRef.current) {
+              setStatusMessage(verifyFailureMessageRef.current);
+              return;
+            }
+
             setStatusMessage(`World ID error: ${errorCode}`);
           }}
-          onOpenChange={setIsWidgetOpen}
+          onOpenChange={(open) => {
+            setIsWidgetOpen(open);
+            if (!open) {
+              verifyFailureMessageRef.current = null;
+            }
+          }}
           onSuccess={() => {
             if (!redirectRef.current) {
               setStatusMessage("Verification succeeded, but redirect information is missing.");

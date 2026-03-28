@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { RpContext } from "@worldcoin/idkit";
+import type { IDKitResult, RpContext } from "@worldcoin/idkit";
 import { signRequest } from "@worldcoin/idkit/signing";
 
 export type WorldIdMode = "mock" | "remote";
@@ -23,6 +23,7 @@ export type WorldIdRequestConfig = {
 
 export type WorldIdVerificationInput = {
   mockHumanKey?: string;
+  result?: IDKitResult | null;
   proof?: string;
   merkleRoot?: string;
   nullifierHash?: string;
@@ -44,18 +45,34 @@ export class WorldIdVerificationError extends Error {
   }
 }
 
-function getConfiguredVerifyUrl(): string {
-  const verifyUrl = process.env.WORLD_ID_VERIFY_URL?.trim();
+function normalizeVerifyUrl(verifyUrl: string | undefined): string {
+  const trimmedVerifyUrl = verifyUrl?.trim();
 
-  if (!verifyUrl || verifyUrl === "<fill-from-world-id-dashboard>") {
+  if (!trimmedVerifyUrl || trimmedVerifyUrl === "<fill-from-world-id-dashboard>") {
     throw new WorldIdVerificationError("WORLD_ID_VERIFY_URL is not configured", 500);
   }
 
   try {
-    return new URL(verifyUrl).toString();
+    return new URL(trimmedVerifyUrl).toString();
   } catch {
     throw new WorldIdVerificationError("WORLD_ID_VERIFY_URL is invalid", 500);
   }
+}
+
+function getConfiguredVerifyUrl(useRpVerify = false): string {
+  const verifyUrl = process.env.WORLD_ID_VERIFY_URL?.trim();
+  const rpId = process.env.WORLD_ID_RP_ID?.trim();
+
+  // IDKit signed request flows verify against the RP endpoint. If the app is still
+  // configured with a legacy app verify URL, upgrade automatically so production
+  // doesn't depend on a stale env value.
+  if (useRpVerify && rpId) {
+    if (!verifyUrl || verifyUrl === "<fill-from-world-id-dashboard>" || verifyUrl.includes("/api/v2/verify/")) {
+      return `https://developer.world.org/api/v4/verify/${rpId}`;
+    }
+  }
+
+  return normalizeVerifyUrl(verifyUrl);
 }
 
 function inferEnvironment(appId: string): "production" | "staging" {
@@ -134,6 +151,37 @@ export async function verifyWorldIdSubmission(
 
     return {
       nullifierHash: hashMockHumanKey(input.mockHumanKey),
+      verificationLevel,
+      signal
+    };
+  }
+
+  if (input.result) {
+    const response = await fetch(getConfiguredVerifyUrl(true), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(input.result)
+    });
+
+    const payload = (await response.json().catch(() => null)) as
+      | { success?: boolean; detail?: string | null; code?: string | null }
+      | null;
+
+    if (!response.ok || payload?.success === false) {
+      throw new WorldIdVerificationError(
+        payload?.detail ?? payload?.code ?? "World ID verification failed"
+      );
+    }
+
+    const responseItem = input.result.responses[0];
+    if (!responseItem || !("nullifier" in responseItem)) {
+      throw new WorldIdVerificationError("World ID did not return a uniqueness proof");
+    }
+
+    return {
+      nullifierHash: responseItem.nullifier,
       verificationLevel,
       signal
     };

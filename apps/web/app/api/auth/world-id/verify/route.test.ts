@@ -92,8 +92,9 @@ describe("POST /api/auth/world-id/verify", () => {
     );
 
     expect(response.status).toBe(409);
-    await expect(response.json()).resolves.toEqual({
-      error: "handle taken_handle is already taken"
+    await expect(response.json()).resolves.toMatchObject({
+      error: "handle taken_handle is already taken",
+      requestId: expect.any(String)
     });
   });
 

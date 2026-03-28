@@ -59,9 +59,6 @@ describe("world id config", () => {
     process.env.WORLD_ID_APP_ID = "app_live_human_layer";
     process.env.WORLD_ID_ACTION = "human-layer-v1";
     process.env.WORLD_ID_SIGNAL = "human-layer-v1";
-    process.env.WORLD_ID_RP_ID = "rp_live_human_layer";
-    process.env.WORLD_ID_RP_PRIVATE_KEY =
-      "59c6995e998f97a5a0044976f6c9f7f6f8286f9ac2f1a9b0b1f4cb0c5b4c3b2a";
     process.env.WORLD_ID_VERIFY_URL = "<fill-from-world-id-dashboard>";
 
     await expect(
@@ -94,6 +91,64 @@ describe("world id config", () => {
     expect(requestConfig.rpContext.signature).toMatch(/^0x/);
     expect(requestConfig.rpContext.nonce).toMatch(/^0x/);
     expect(requestConfig.environment).toBe("production");
+  });
+
+  it("verifies signed request results against the RP verify endpoint", async () => {
+    process.env.WORLD_ID_MODE = "remote";
+    process.env.WORLD_ID_APP_ID = "app_live_human_layer";
+    process.env.WORLD_ID_ACTION = "human-layer-v1";
+    process.env.WORLD_ID_SIGNAL = "human-layer-v1";
+    process.env.WORLD_ID_RP_ID = "rp_live_human_layer";
+    process.env.WORLD_ID_VERIFY_URL = "https://developer.world.org/api/v2/verify/app_live_human_layer";
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true })
+    });
+    global.fetch = fetchMock as typeof fetch;
+
+    const result = await verifyWorldIdSubmission({
+      result: {
+        protocol_version: "3.0",
+        nonce: "nonce-1",
+        action: "human-layer-v1",
+        responses: [
+          {
+            identifier: "proof_of_human",
+            proof: "proof-1",
+            merkle_root: "root-1",
+            nullifier: "nullifier-1",
+            signal_hash: "signal-hash-1"
+          }
+        ],
+        environment: "production"
+      },
+      verificationLevel: "orb"
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://developer.world.org/api/v4/verify/rp_live_human_layer");
+    expect(JSON.parse(String(init?.body))).toEqual({
+      protocol_version: "3.0",
+      nonce: "nonce-1",
+      action: "human-layer-v1",
+      responses: [
+        {
+          identifier: "proof_of_human",
+          proof: "proof-1",
+          merkle_root: "root-1",
+          nullifier: "nullifier-1",
+          signal_hash: "signal-hash-1"
+        }
+      ],
+      environment: "production"
+    });
+    expect(result).toEqual({
+      nullifierHash: "nullifier-1",
+      verificationLevel: "orb",
+      signal: "human-layer-v1"
+    });
   });
 
   it("sends signal_hash to the legacy verification endpoint", async () => {
