@@ -26,6 +26,7 @@ type VerifyBody = {
   proof?: string;
   merkleRoot?: string;
   nullifierHash?: string;
+  signalHash?: string | null;
   verificationLevel?: "orb" | "device";
   signal?: string | null;
 };
@@ -65,6 +66,7 @@ export async function POST(request: NextRequest) {
       proof: body?.proof,
       merkleRoot: body?.merkleRoot,
       nullifierHash: body?.nullifierHash,
+      signalHash: body?.signalHash,
       verificationLevel: body?.verificationLevel,
       signal: body?.signal
     });

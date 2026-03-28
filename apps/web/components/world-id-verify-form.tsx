@@ -98,6 +98,7 @@ export function WorldIdVerifyForm({
     proof?: string;
     merkleRoot?: string;
     nullifierHash?: string;
+    signalHash?: string | null;
     verificationLevel?: "orb" | "device";
     signal?: string | null;
     mockHumanKey?: string;
@@ -116,6 +117,7 @@ export function WorldIdVerifyForm({
         proof: params.proof,
         merkleRoot: params.merkleRoot,
         nullifierHash: params.nullifierHash,
+        signalHash: params.signalHash,
         verificationLevel: params.verificationLevel,
         signal: params.signal ?? worldIdConfig.signal
       })
@@ -169,6 +171,7 @@ export function WorldIdVerifyForm({
         proof: payload.proof,
         merkleRoot: payload.merkleRoot,
         nullifierHash: payload.nullifierHash,
+        signalHash: payload.signalHash,
         verificationLevel,
         signal: worldIdConfig.signal
       });

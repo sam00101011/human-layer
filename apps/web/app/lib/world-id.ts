@@ -26,6 +26,7 @@ export type WorldIdVerificationInput = {
   proof?: string;
   merkleRoot?: string;
   nullifierHash?: string;
+  signalHash?: string | null;
   verificationLevel?: "orb" | "device";
   signal?: string | null;
 };
@@ -150,12 +151,11 @@ export async function verifyWorldIdSubmission(
       "content-type": "application/json"
     },
     body: JSON.stringify({
-      app_id: config.appId,
       action: config.action,
-      signal,
       proof: input.proof,
       merkle_root: input.merkleRoot,
       nullifier_hash: input.nullifierHash,
+      signal_hash: input.signalHash ?? undefined,
       verification_level: verificationLevel
     })
   });
