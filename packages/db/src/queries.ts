@@ -27,6 +27,8 @@ import {
   commentReports,
   comments,
   follows,
+  mutedPages,
+  mutedProfiles,
   notificationReads,
   pageAliases,
   pages,
@@ -77,6 +79,11 @@ export type NotificationItem = {
   sources: NotificationSource[];
   unread: boolean;
   reason: string;
+};
+
+export type NotificationPreferences = {
+  bookmarkedPageComments: boolean;
+  followedProfileTakes: boolean;
 };
 
 export type FollowGraphItem = {
@@ -221,6 +228,32 @@ function buildNotificationReason(sources: NotificationSource[]): string {
   }
 
   return "A bookmarked page has new activity.";
+}
+
+function getReputationWeight(level: ContributorReputation["level"] | undefined): number {
+  if (level === "consistently_useful") return 12;
+  if (level === "steady_contributor") return 8;
+  if (level === "emerging_signal") return 4;
+  if (level === "new_voice") return 1;
+  return 0;
+}
+
+function getFreshnessBoost(createdAt: Date | string): number {
+  const created = createdAt instanceof Date ? createdAt : new Date(createdAt);
+  const ageHours = Math.max(0, (Date.now() - created.getTime()) / (1000 * 60 * 60));
+  return Math.max(0, 10 - ageHours / 12);
+}
+
+function rankTakeLikeSignal(params: {
+  helpfulCount: number;
+  createdAt: Date | string;
+  reputationLevel?: ContributorReputation["level"];
+}): number {
+  return (
+    params.helpfulCount * 6 +
+    getReputationWeight(params.reputationLevel) +
+    getFreshnessBoost(params.createdAt)
+  );
 }
 
 async function getContributorReputationMap(profileIds: string[]): Promise<Map<string, ContributorReputation>> {
@@ -599,23 +632,39 @@ export async function getRecommendedTakes(limit = 6): Promise<DiscoveryTake[]> {
       pages.canonicalUrl
     )
     .orderBy(desc(sql<number>`count(${commentHelpfulVotes.id})::int`), desc(comments.createdAt))
-    .limit(limit);
+    .limit(Math.max(limit * 3, 24));
 
   const reputationMap = await getContributorReputationMap(rows.map((row) => row.profileId));
 
-  return rows.map((row) => ({
-    commentId: row.commentId,
-    body: row.body,
-    createdAt: row.createdAt.toISOString(),
-    helpfulCount: row.helpfulCount,
-    profileId: row.profileId,
-    profileHandle: row.profileHandle,
-    pageId: row.pageId,
-    pageKind: row.pageKind as PageSummary["pageKind"],
-    pageTitle: row.pageTitle,
-    canonicalUrl: row.canonicalUrl,
-    reputation: reputationMap.get(row.profileId) ?? defaultContributorReputation()
-  }));
+  return rows
+    .map((row) => ({
+      commentId: row.commentId,
+      body: row.body,
+      createdAt: row.createdAt.toISOString(),
+      helpfulCount: row.helpfulCount,
+      profileId: row.profileId,
+      profileHandle: row.profileHandle,
+      pageId: row.pageId,
+      pageKind: row.pageKind as PageSummary["pageKind"],
+      pageTitle: row.pageTitle,
+      canonicalUrl: row.canonicalUrl,
+      reputation: reputationMap.get(row.profileId) ?? defaultContributorReputation()
+    }))
+    .sort(
+      (left, right) =>
+        rankTakeLikeSignal({
+          helpfulCount: right.helpfulCount,
+          createdAt: right.createdAt,
+          reputationLevel: right.reputation?.level
+        }) -
+          rankTakeLikeSignal({
+            helpfulCount: left.helpfulCount,
+            createdAt: left.createdAt,
+            reputationLevel: left.reputation?.level
+          }) ||
+        new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+    )
+    .slice(0, limit);
 }
 
 export async function getPeopleToFollow(limit = 6, viewerProfileId?: string): Promise<DiscoveryProfile[]> {
@@ -1277,6 +1326,16 @@ export async function getBookmarkedPagesForProfile(
 }
 
 async function getUnreadNotificationCommentIds(profileId: string): Promise<string[]> {
+  const preferences = await getNotificationPreferencesForProfile(profileId);
+  const sourceClauses = [
+    preferences.bookmarkedPageComments ? sql`${saves.id} is not null` : null,
+    preferences.followedProfileTakes ? sql`${follows.id} is not null` : null
+  ].filter((value): value is ReturnType<typeof sql> => value !== null);
+
+  if (sourceClauses.length === 0) {
+    return [];
+  }
+
   const rows = await db
     .select({
       commentId: comments.id
@@ -1294,12 +1353,22 @@ async function getUnreadNotificationCommentIds(profileId: string): Promise<strin
       notificationReads,
       and(eq(notificationReads.commentId, comments.id), eq(notificationReads.profileId, profileId))
     )
+    .leftJoin(
+      mutedPages,
+      and(eq(mutedPages.pageId, comments.pageId), eq(mutedPages.profileId, profileId))
+    )
+    .leftJoin(
+      mutedProfiles,
+      and(eq(mutedProfiles.mutedProfileId, comments.profileId), eq(mutedProfiles.profileId, profileId))
+    )
     .where(
       and(
         eq(comments.hidden, false),
         ne(comments.profileId, profileId),
-        or(sql`${saves.id} is not null`, sql`${follows.id} is not null`),
-        sql`${notificationReads.id} is null`
+        or(...sourceClauses),
+        sql`${notificationReads.id} is null`,
+        sql`${mutedPages.id} is null`,
+        sql`${mutedProfiles.id} is null`
       )
     )
     .groupBy(comments.id)
@@ -1309,6 +1378,16 @@ async function getUnreadNotificationCommentIds(profileId: string): Promise<strin
 }
 
 export async function getUnreadNotificationCount(profileId: string): Promise<number> {
+  const preferences = await getNotificationPreferencesForProfile(profileId);
+  const sourceClauses = [
+    preferences.bookmarkedPageComments ? sql`${saves.id} is not null` : null,
+    preferences.followedProfileTakes ? sql`${follows.id} is not null` : null
+  ].filter((value): value is ReturnType<typeof sql> => value !== null);
+
+  if (sourceClauses.length === 0) {
+    return 0;
+  }
+
   const [row] = await db
     .select({
       count: sql<number>`count(distinct ${comments.id})::int`
@@ -1326,12 +1405,22 @@ export async function getUnreadNotificationCount(profileId: string): Promise<num
       notificationReads,
       and(eq(notificationReads.commentId, comments.id), eq(notificationReads.profileId, profileId))
     )
+    .leftJoin(
+      mutedPages,
+      and(eq(mutedPages.pageId, comments.pageId), eq(mutedPages.profileId, profileId))
+    )
+    .leftJoin(
+      mutedProfiles,
+      and(eq(mutedProfiles.mutedProfileId, comments.profileId), eq(mutedProfiles.profileId, profileId))
+    )
     .where(
       and(
         eq(comments.hidden, false),
         ne(comments.profileId, profileId),
-        or(sql`${saves.id} is not null`, sql`${follows.id} is not null`),
-        sql`${notificationReads.id} is null`
+        or(...sourceClauses),
+        sql`${notificationReads.id} is null`,
+        sql`${mutedPages.id} is null`,
+        sql`${mutedProfiles.id} is null`
       )
     );
 
@@ -1372,6 +1461,16 @@ export async function getNotificationsForProfile(
   profileId: string,
   limit = 50
 ): Promise<NotificationItem[]> {
+  const preferences = await getNotificationPreferencesForProfile(profileId);
+  const sourceClauses = [
+    preferences.bookmarkedPageComments ? sql`${saves.id} is not null` : null,
+    preferences.followedProfileTakes ? sql`${follows.id} is not null` : null
+  ].filter((value): value is ReturnType<typeof sql> => value !== null);
+
+  if (sourceClauses.length === 0) {
+    return [];
+  }
+
   const rows = await db
     .select({
       commentId: comments.id,
@@ -1405,11 +1504,21 @@ export async function getNotificationsForProfile(
       notificationReads,
       and(eq(notificationReads.commentId, comments.id), eq(notificationReads.profileId, profileId))
     )
+    .leftJoin(
+      mutedPages,
+      and(eq(mutedPages.pageId, comments.pageId), eq(mutedPages.profileId, profileId))
+    )
+    .leftJoin(
+      mutedProfiles,
+      and(eq(mutedProfiles.mutedProfileId, comments.profileId), eq(mutedProfiles.profileId, profileId))
+    )
     .where(
       and(
         eq(comments.hidden, false),
         ne(comments.profileId, profileId),
-        or(sql`${saves.id} is not null`, sql`${follows.id} is not null`)
+        or(...sourceClauses),
+        sql`${mutedPages.id} is null`,
+        sql`${mutedProfiles.id} is null`
       )
     )
     .groupBy(
@@ -1425,39 +1534,65 @@ export async function getNotificationsForProfile(
       pages.host
     )
     .orderBy(desc(comments.createdAt))
-    .limit(limit);
+    .limit(Math.max(limit * 3, 30));
 
   const reputationMap = await getContributorReputationMap(rows.map((row) => row.authorProfileId));
 
-  return rows.map((row) => {
-    const sources: NotificationSource[] = [];
-    if (row.fromBookmarkedPage) sources.push("bookmarked_page");
-    if (row.fromFollowedProfile) sources.push("followed_profile");
+  return rows
+    .map((row) => {
+      const sources: NotificationSource[] = [];
+      if (preferences.bookmarkedPageComments && row.fromBookmarkedPage) sources.push("bookmarked_page");
+      if (preferences.followedProfileTakes && row.fromFollowedProfile) sources.push("followed_profile");
 
-    return {
-      commentId: row.commentId,
-      body: row.body,
-      createdAt: row.createdAt.toISOString(),
-      helpfulCount: row.helpfulCount,
-      authorProfileId: row.authorProfileId,
-      authorHandle: row.authorHandle,
-      authorReputation: reputationMap.get(row.authorProfileId) ?? defaultContributorReputation(),
-      pageId: row.pageId,
-      pageKind: row.pageKind as PageSummary["pageKind"],
-      pageTitle: row.pageTitle,
-      pageCanonicalUrl: row.pageCanonicalUrl,
-      pageHost: row.pageHost,
-      sources,
-      unread: row.readAt === null,
-      reason: buildNotificationReason(sources)
-    };
-  });
+      const authorReputation =
+        reputationMap.get(row.authorProfileId) ?? defaultContributorReputation();
+
+      return {
+        commentId: row.commentId,
+        body: row.body,
+        createdAt: row.createdAt.toISOString(),
+        helpfulCount: row.helpfulCount,
+        authorProfileId: row.authorProfileId,
+        authorHandle: row.authorHandle,
+        authorReputation,
+        pageId: row.pageId,
+        pageKind: row.pageKind as PageSummary["pageKind"],
+        pageTitle: row.pageTitle,
+        pageCanonicalUrl: row.pageCanonicalUrl,
+        pageHost: row.pageHost,
+        sources,
+        unread: row.readAt === null,
+        reason: buildNotificationReason(sources)
+      };
+    })
+    .filter((item) => item.sources.length > 0)
+    .sort(
+      (left, right) =>
+        Number(right.unread) - Number(left.unread) ||
+        rankTakeLikeSignal({
+          helpfulCount: right.helpfulCount,
+          createdAt: right.createdAt,
+          reputationLevel: right.authorReputation?.level
+        }) -
+          rankTakeLikeSignal({
+            helpfulCount: left.helpfulCount,
+            createdAt: left.createdAt,
+            reputationLevel: left.authorReputation?.level
+          }) ||
+        new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+    )
+    .slice(0, limit);
 }
 
 export async function getFollowedProfileActivity(
   profileId: string,
   limit = 12
 ): Promise<FollowGraphItem[]> {
+  const preferences = await getNotificationPreferencesForProfile(profileId);
+  if (!preferences.followedProfileTakes) {
+    return [];
+  }
+
   const rows = await db
     .select({
       commentId: comments.id,
@@ -1480,7 +1615,22 @@ export async function getFollowedProfileActivity(
       and(eq(follows.followeeProfileId, comments.profileId), eq(follows.followerProfileId, profileId))
     )
     .leftJoin(commentHelpfulVotes, eq(commentHelpfulVotes.commentId, comments.id))
-    .where(and(eq(comments.hidden, false), ne(comments.profileId, profileId)))
+    .leftJoin(
+      mutedPages,
+      and(eq(mutedPages.pageId, comments.pageId), eq(mutedPages.profileId, profileId))
+    )
+    .leftJoin(
+      mutedProfiles,
+      and(eq(mutedProfiles.mutedProfileId, comments.profileId), eq(mutedProfiles.profileId, profileId))
+    )
+    .where(
+      and(
+        eq(comments.hidden, false),
+        ne(comments.profileId, profileId),
+        sql`${mutedPages.id} is null`,
+        sql`${mutedProfiles.id} is null`
+      )
+    )
     .groupBy(
       comments.id,
       comments.body,
@@ -1494,25 +1644,77 @@ export async function getFollowedProfileActivity(
       pages.host
     )
     .orderBy(desc(comments.createdAt))
-    .limit(limit);
+    .limit(Math.max(limit * 3, 24));
 
   const reputationMap = await getContributorReputationMap(rows.map((row) => row.authorProfileId));
 
-  return rows.map((row) => ({
-    commentId: row.commentId,
-    body: row.body,
-    createdAt: row.createdAt.toISOString(),
-    helpfulCount: row.helpfulCount,
-    authorProfileId: row.authorProfileId,
-    authorHandle: row.authorHandle,
-    authorReputation: reputationMap.get(row.authorProfileId) ?? defaultContributorReputation(),
-    pageId: row.pageId,
-    pageKind: row.pageKind as PageSummary["pageKind"],
-    pageTitle: row.pageTitle,
-    pageCanonicalUrl: row.pageCanonicalUrl,
-    pageHost: row.pageHost,
-    reason: "New take from someone you follow."
-  }));
+  return rows
+    .map((row) => ({
+      commentId: row.commentId,
+      body: row.body,
+      createdAt: row.createdAt.toISOString(),
+      helpfulCount: row.helpfulCount,
+      authorProfileId: row.authorProfileId,
+      authorHandle: row.authorHandle,
+      authorReputation: reputationMap.get(row.authorProfileId) ?? defaultContributorReputation(),
+      pageId: row.pageId,
+      pageKind: row.pageKind as PageSummary["pageKind"],
+      pageTitle: row.pageTitle,
+      pageCanonicalUrl: row.pageCanonicalUrl,
+      pageHost: row.pageHost,
+      reason: "New take from someone you follow."
+    }))
+    .sort(
+      (left, right) =>
+        rankTakeLikeSignal({
+          helpfulCount: right.helpfulCount,
+          createdAt: right.createdAt,
+          reputationLevel: right.authorReputation?.level
+        }) -
+          rankTakeLikeSignal({
+            helpfulCount: left.helpfulCount,
+            createdAt: left.createdAt,
+            reputationLevel: left.authorReputation?.level
+          }) ||
+        new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+    )
+    .slice(0, limit);
+}
+
+export async function getNotificationPreferencesForProfile(
+  profileId: string
+): Promise<NotificationPreferences> {
+  const row = await db.query.profiles.findFirst({
+    where: eq(profiles.id, profileId),
+    columns: {
+      notifyBookmarkedPageComments: true,
+      notifyFollowedProfileTakes: true
+    }
+  });
+
+  return {
+    bookmarkedPageComments: row?.notifyBookmarkedPageComments ?? true,
+    followedProfileTakes: row?.notifyFollowedProfileTakes ?? true
+  };
+}
+
+export async function updateNotificationPreferences(params: {
+  profileId: string;
+  bookmarkedPageComments: boolean;
+  followedProfileTakes: boolean;
+}): Promise<NotificationPreferences> {
+  await db
+    .update(profiles)
+    .set({
+      notifyBookmarkedPageComments: params.bookmarkedPageComments,
+      notifyFollowedProfileTakes: params.followedProfileTakes
+    })
+    .where(eq(profiles.id, params.profileId));
+
+  return {
+    bookmarkedPageComments: params.bookmarkedPageComments,
+    followedProfileTakes: params.followedProfileTakes
+  };
 }
 
 async function buildProfileSnapshot(profile: StoredProfile): Promise<ProfileSnapshot> {
@@ -1727,6 +1929,34 @@ export async function findCommentById(commentId: string): Promise<{
   };
 }
 
+export async function markCommentHelpful(params: {
+  commentId: string;
+  profileId: string;
+}): Promise<{ created: boolean; helpfulCount: number }> {
+  const inserted = await db
+    .insert(commentHelpfulVotes)
+    .values({
+      commentId: params.commentId,
+      profileId: params.profileId
+    })
+    .onConflictDoNothing()
+    .returning({
+      id: commentHelpfulVotes.id
+    });
+
+  const [row] = await db
+    .select({
+      count: sql<number>`count(*)::int`
+    })
+    .from(commentHelpfulVotes)
+    .where(eq(commentHelpfulVotes.commentId, params.commentId));
+
+  return {
+    created: inserted.length > 0,
+    helpfulCount: row?.count ?? 0
+  };
+}
+
 export async function hasProfileSavedPage(params: {
   pageId: string;
   profileId: string;
@@ -1746,6 +1976,32 @@ export async function savePageForProfile(params: {
     .insert(saves)
     .values({
       pageId: params.pageId,
+      profileId: params.profileId
+    })
+    .onConflictDoNothing();
+}
+
+export async function mutePageForProfile(params: {
+  pageId: string;
+  profileId: string;
+}): Promise<void> {
+  await db
+    .insert(mutedPages)
+    .values({
+      pageId: params.pageId,
+      profileId: params.profileId
+    })
+    .onConflictDoNothing();
+}
+
+export async function muteProfileForProfile(params: {
+  mutedProfileId: string;
+  profileId: string;
+}): Promise<void> {
+  await db
+    .insert(mutedProfiles)
+    .values({
+      mutedProfileId: params.mutedProfileId,
       profileId: params.profileId
     })
     .onConflictDoNothing();

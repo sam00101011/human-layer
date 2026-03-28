@@ -64,6 +64,7 @@ export function WorldIdVerifyForm({
   const [requestConfig, setRequestConfig] = useState<WorldIdRequestConfig | null>(null);
   const [isWidgetOpen, setIsWidgetOpen] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [showAllInterests, setShowAllInterests] = useState(false);
 
   useEffect(() => {
     if (worldIdConfig.mode !== "mock") return;
@@ -370,31 +371,41 @@ export function WorldIdVerifyForm({
 
       <div className="field">
         <span>Browse the interest graph</span>
-        <div className="interest-group-grid">
-          {INTEREST_GROUPS.map((group) => (
-            <section className="interest-group-card" key={group.id}>
-              <div className="stack compact">
-                <strong>{group.label}</strong>
-                <span className="helper">{group.description}</span>
-              </div>
-              <div className="chip-row">
-                {group.tags.map((interestTag) => {
-                  const selected = selectedTags.includes(interestTag);
-                  return (
-                    <button
-                      className={selected ? "chip active" : "chip"}
-                      key={interestTag}
-                      onClick={() => toggleTag(interestTag)}
-                      type="button"
-                    >
-                      {getInterestTagLabel(interestTag)}
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-          ))}
-        </div>
+        {showAllInterests ? (
+          <div className="interest-group-grid">
+            {INTEREST_GROUPS.map((group) => (
+              <section className="interest-group-card" key={group.id}>
+                <div className="stack compact">
+                  <strong>{group.label}</strong>
+                  <span className="helper">{group.description}</span>
+                </div>
+                <div className="chip-row">
+                  {group.tags.map((interestTag) => {
+                    const selected = selectedTags.includes(interestTag);
+                    return (
+                      <button
+                        className={selected ? "chip active" : "chip"}
+                        key={interestTag}
+                        onClick={() => toggleTag(interestTag)}
+                        type="button"
+                      >
+                        {getInterestTagLabel(interestTag)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
+          </div>
+        ) : (
+          <button
+            className="button secondary subtle"
+            onClick={() => setShowAllInterests(true)}
+            type="button"
+          >
+            Browse all interest categories
+          </button>
+        )}
         <span className="helper">
           Click any interest and the graph will suggest more adjacent ones, similar to audience expansion.
         </span>

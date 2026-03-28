@@ -1,6 +1,6 @@
 export default function TermsPage() {
   return (
-    <main className="page-shell stack legal-shell">
+    <div className="page-shell stack legal-shell">
       <span className="pill">Terms</span>
 
       <section className="card stack">
@@ -49,6 +49,6 @@ export default function TermsPage() {
           purpose.
         </p>
       </section>
-    </main>
+    </div>
   );
 }

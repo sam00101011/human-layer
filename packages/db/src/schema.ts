@@ -24,6 +24,12 @@ export const profiles = pgTable(
       .$type<InterestTag[]>()
       .default([])
       .notNull(),
+    notifyBookmarkedPageComments: boolean("notify_bookmarked_page_comments")
+      .default(true)
+      .notNull(),
+    notifyFollowedProfileTakes: boolean("notify_followed_profile_takes")
+      .default(true)
+      .notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
   },
   (table) => ({
@@ -235,6 +241,43 @@ export const notificationReads = pgTable(
     profileCommentUnique: uniqueIndex("notification_reads_profile_comment_unique").on(
       table.profileId,
       table.commentId
+    )
+  })
+);
+
+export const mutedPages = pgTable(
+  "muted_pages",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    profileId: uuid("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    pageId: uuid("page_id")
+      .notNull()
+      .references(() => pages.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    profilePageUnique: uniqueIndex("muted_pages_profile_page_unique").on(table.profileId, table.pageId)
+  })
+);
+
+export const mutedProfiles = pgTable(
+  "muted_profiles",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    profileId: uuid("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    mutedProfileId: uuid("muted_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    profileMutedProfileUnique: uniqueIndex("muted_profiles_profile_muted_profile_unique").on(
+      table.profileId,
+      table.mutedProfileId
     )
   })
 );

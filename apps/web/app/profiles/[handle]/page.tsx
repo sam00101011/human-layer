@@ -3,6 +3,7 @@ import { getProfileSnapshotByHandle } from "@human-layer/db";
 import { getInterestTagLabel } from "@human-layer/core";
 import { notFound } from "next/navigation";
 
+import { HelpfulButton } from "../../../components/helpful-button";
 import { ReportCommentButton } from "../../../components/report-comment-button";
 
 function formatPageKind(pageKind: string) {
@@ -67,7 +68,7 @@ export default async function ProfilePage(props: {
   const trustSignals = buildTrustSignals(profile);
 
   return (
-    <main className="page-shell stack">
+    <div className="page-shell stack">
       <section className="card hero-card stack">
         <div className="hero-row">
           <div className="stack compact">
@@ -205,7 +206,7 @@ export default async function ProfilePage(props: {
           <p className="muted">No comments yet.</p>
         ) : (
           profile.recentComments.map((comment) => (
-            <article className="stack comment-card" key={comment.commentId}>
+            <article className="stack comment-card interactive" key={comment.commentId}>
               <div className="comment-meta">
                 <div className="stack compact">
                   <div className="chip-row">
@@ -223,7 +224,10 @@ export default async function ProfilePage(props: {
                 </div>
               </div>
               <p>{comment.body}</p>
-              <ReportCommentButton commentId={comment.commentId} compact />
+              <div className="inline-action-row">
+                <HelpfulButton commentId={comment.commentId} initialCount={comment.helpfulCount} />
+                <ReportCommentButton commentId={comment.commentId} compact />
+              </div>
               <div className="link-row">
                 <Link className="inline-link" href={`/pages/${comment.pageId}`}>
                   Open Human Layer page
@@ -246,7 +250,7 @@ export default async function ProfilePage(props: {
           <p className="muted">No bookmarked pages yet.</p>
         ) : (
           profile.savedPages.map((page) => (
-            <article className="stack comment-card" key={page.id}>
+            <article className="stack comment-card interactive" key={page.id}>
               <div className="stack compact">
                 <strong>{page.title}</strong>
                 <p className="muted">
@@ -265,6 +269,6 @@ export default async function ProfilePage(props: {
           ))
         )}
       </section>
-    </main>
+    </div>
   );
 }

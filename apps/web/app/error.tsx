@@ -8,7 +8,7 @@ export default function GlobalError({
   reset: () => void;
 }) {
   return (
-    <main className="page-shell stack">
+    <div className="page-shell stack">
       <div className="card stack">
         <h1>Something went wrong</h1>
         <p className="error-message">{error.message || 'An unexpected error occurred.'}</p>
@@ -16,6 +16,6 @@ export default function GlobalError({
           Try again
         </button>
       </div>
-    </main>
+    </div>
   );
 }

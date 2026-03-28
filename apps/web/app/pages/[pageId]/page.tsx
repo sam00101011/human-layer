@@ -3,6 +3,7 @@ import { buildPageContextSummary } from "@human-layer/core";
 import { findPageById, getPageThreadSnapshot } from "@human-layer/db";
 import { notFound } from "next/navigation";
 
+import { HelpfulButton } from "../../../components/helpful-button";
 import { ReportCommentButton } from "../../../components/report-comment-button";
 
 function formatPageKind(pageKind: string) {
@@ -33,7 +34,7 @@ export default async function HumanLayerPage(props: {
   const verdictTotal = Object.values(thread.verdictCounts).reduce((sum, count) => sum + count, 0);
 
   return (
-    <main className="page-shell stack">
+    <div className="page-shell stack">
       <section className="card hero-card stack">
         <div className="hero-row">
           <div className="stack compact">
@@ -123,7 +124,13 @@ export default async function HumanLayerPage(props: {
               </span>
             </div>
             <p>{thread.topHumanTake.body}</p>
-            <ReportCommentButton commentId={thread.topHumanTake.commentId} compact />
+            <div className="inline-action-row">
+              <HelpfulButton
+                commentId={thread.topHumanTake.commentId}
+                initialCount={thread.topHumanTake.helpfulCount}
+              />
+              <ReportCommentButton commentId={thread.topHumanTake.commentId} compact />
+            </div>
           </article>
         ) : (
           <p className="muted">No top human take yet.</p>
@@ -172,11 +179,14 @@ export default async function HumanLayerPage(props: {
                 </span>
               </div>
               <p>{comment.body}</p>
-              <ReportCommentButton commentId={comment.commentId} compact />
+              <div className="inline-action-row">
+                <HelpfulButton commentId={comment.commentId} initialCount={comment.helpfulCount} />
+                <ReportCommentButton commentId={comment.commentId} compact />
+              </div>
             </article>
           ))
         )}
       </section>
-    </main>
+    </div>
   );
 }

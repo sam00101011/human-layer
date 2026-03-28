@@ -8,7 +8,7 @@ export default function ProfileError({
   reset: () => void;
 }) {
   return (
-    <main className="page-shell stack">
+    <div className="page-shell stack">
       <div className="card stack">
         <h1>Could not load this profile</h1>
         <p className="error-message">{error.message || 'Could not load this profile.'}</p>
@@ -16,6 +16,6 @@ export default function ProfileError({
           Try again
         </button>
       </div>
-    </main>
+    </div>
   );
 }

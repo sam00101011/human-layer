@@ -6,8 +6,8 @@ export default async function ExtensionHandoffPage(props: {
   const searchParams = await props.searchParams;
 
   return (
-    <main className="page-shell">
+    <div className="page-shell">
       <HandoffClient returnUrl={searchParams.returnUrl ?? null} />
-    </main>
+    </div>
   );
 }

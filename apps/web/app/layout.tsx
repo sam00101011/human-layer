@@ -24,6 +24,9 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   return (
     <html lang="en" className={`${sans.variable} ${serif.variable}`}>
       <body>
+        <a href="#main-content" className="sr-only focus:not-sr-only">
+          Skip to content
+        </a>
         <nav className="top-nav">
           <div className="top-nav-inner">
             <Link className="top-nav-brand" href="/">
@@ -64,7 +67,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             </div>
           </div>
         </nav>
-        {children}
+        <main id="main-content">{children}</main>
         <footer className="site-footer">
           <div className="site-footer-inner">
             <span className="site-footer-brand">Human Layer beta</span>

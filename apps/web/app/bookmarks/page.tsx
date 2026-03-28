@@ -16,7 +16,7 @@ export default async function BookmarksPage() {
 
   if (!viewer) {
     return (
-      <main className="page-shell stack">
+      <div className="page-shell stack">
         <section className="card hero-card stack">
           <span className="pill">Bookmarks</span>
           <h1>Your Human Layer bookmarks</h1>
@@ -29,14 +29,14 @@ export default async function BookmarksPage() {
             </Link>
           </div>
         </section>
-      </main>
+      </div>
     );
   }
 
   const bookmarks = await getBookmarkedPagesForProfile(viewer.id, 100);
 
   return (
-    <main className="page-shell stack">
+    <div className="page-shell stack">
       <section className="card hero-card stack">
         <div className="hero-row">
           <div className="stack compact">
@@ -67,7 +67,7 @@ export default async function BookmarksPage() {
           <p className="muted">You have not bookmarked any pages yet.</p>
         ) : (
           bookmarks.map((page) => (
-            <article className="stack comment-card" key={page.id}>
+            <article className="stack comment-card interactive" key={page.id}>
               <div className="section-header">
                 <div className="stack compact">
                   <strong>{page.title}</strong>
@@ -88,6 +88,6 @@ export default async function BookmarksPage() {
           ))
         )}
       </section>
-    </main>
+    </div>
   );
 }

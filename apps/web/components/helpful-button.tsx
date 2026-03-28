@@ -2,40 +2,34 @@
 
 import { useState } from "react";
 
-type ReportCommentButtonProps = {
+type HelpfulButtonProps = {
   commentId: string;
-  compact?: boolean;
+  initialCount: number;
 };
 
-export function ReportCommentButton({ commentId, compact = false }: ReportCommentButtonProps) {
-  const [status, setStatus] = useState<"idle" | "submitting" | "reported">("idle");
+export function HelpfulButton({ commentId, initialCount }: HelpfulButtonProps) {
+  const [count, setCount] = useState(initialCount);
+  const [status, setStatus] = useState<"idle" | "submitting" | "done">("idle");
   const [error, setError] = useState<string | null>(null);
 
-  async function handleReport() {
-    if (status === "submitting" || status === "reported") {
-      return;
-    }
-
-    if (!window.confirm("Report this comment? This action cannot be undone.")) {
+  async function handleHelpful() {
+    if (status !== "idle") {
       return;
     }
 
     setStatus("submitting");
     setError(null);
 
-    const response = await fetch(`/api/comments/${commentId}/report`, {
+    const response = await fetch(`/api/comments/${commentId}/helpful`, {
       method: "POST",
       headers: {
         "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        reasonCode: "needs_review"
-      })
+      }
     }).catch(() => null);
 
     if (!response) {
       setStatus("idle");
-      setError("Could not send the report right now.");
+      setError("Could not save the helpful vote.");
       return;
     }
 
@@ -47,24 +41,33 @@ export function ReportCommentButton({ commentId, compact = false }: ReportCommen
     if (!response.ok) {
       const payload = (await response.json().catch(() => null)) as { error?: string } | null;
       setStatus("idle");
-      setError(payload?.error ?? "Could not send the report right now.");
+      setError(payload?.error ?? "Could not save the helpful vote.");
       return;
     }
 
-    setStatus("reported");
+    const payload = (await response.json().catch(() => null)) as
+      | { helpfulCount?: number; created?: boolean }
+      | null;
+
+    setCount(payload?.helpfulCount ?? count);
+    setStatus("done");
   }
 
   return (
     <div className="stack compact">
       <button
-        className={compact ? "inline-action danger" : "button secondary subtle"}
+        className="inline-action"
         disabled={status !== "idle"}
         onClick={() => {
-          void handleReport();
+          void handleHelpful();
         }}
         type="button"
       >
-        {status === "reported" ? "Reported" : status === "submitting" ? "Reporting..." : "Report"}
+        {status === "submitting"
+          ? "Saving..."
+          : status === "done"
+            ? `Helpful added • ${count}`
+            : `Helpful • ${count}`}
       </button>
       {error ? <span className="muted small-copy">{error}</span> : null}
     </div>

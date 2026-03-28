@@ -8,19 +8,19 @@ export default async function ModerationPage() {
 
   if (!viewer) {
     return (
-      <main className="page-shell stack">
+      <div className="page-shell stack">
         <section className="card hero-card stack">
           <span className="pill">Moderation</span>
           <h1>Admin review is locked</h1>
           <p className="muted">Sign in with an approved admin profile to review reported comments.</p>
         </section>
-      </main>
+      </div>
     );
   }
 
   if (!isAdminProfile(viewer)) {
     return (
-      <main className="page-shell stack">
+      <div className="page-shell stack">
         <section className="card hero-card stack">
           <span className="pill">Moderation</span>
           <h1>Access restricted</h1>
@@ -28,14 +28,14 @@ export default async function ModerationPage() {
             This queue is only available to handles listed in <span className="mono">ADMIN_REVIEW_HANDLES</span>.
           </p>
         </section>
-      </main>
+      </div>
     );
   }
 
   const items = await getModerationQueue(100);
 
   return (
-    <main className="page-shell stack">
+    <div className="page-shell stack">
       <section className="card hero-card stack">
         <div className="hero-row">
           <div className="stack compact">
@@ -64,6 +64,6 @@ export default async function ModerationPage() {
         </div>
         <ModerationQueue items={items} />
       </section>
-    </main>
+    </div>
   );
 }

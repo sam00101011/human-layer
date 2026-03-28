@@ -1,6 +1,6 @@
 export default function PageLoading() {
   return (
-    <main className="page-shell stack">
+    <div className="page-shell stack">
       <div className="card hero-card stack">
         <div className="skeleton-row">
           <div className="skeleton" style={{ width: '160px', height: '14px' }} />
@@ -16,6 +16,6 @@ export default function PageLoading() {
           ))}
         </div>
       </div>
-    </main>
+    </div>
   );
 }

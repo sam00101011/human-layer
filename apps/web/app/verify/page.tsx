@@ -7,13 +7,13 @@ export default async function VerifyPage(props: {
   const searchParams = await props.searchParams;
 
   return (
-    <main className="page-shell stack">
+    <div className="page-shell stack">
       <span className="pill">Verification</span>
       <WorldIdVerifyForm
         handoff={searchParams.handoff === "1"}
         returnUrl={searchParams.returnUrl ?? ""}
         worldIdConfig={getWorldIdClientConfig()}
       />
-    </main>
+    </div>
   );
 }

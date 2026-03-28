@@ -1,7 +1,15 @@
 import Link from "next/link";
-import { getFollowedProfileActivity, getNotificationsForProfile, getUnreadNotificationCount } from "@human-layer/db";
+import {
+  getFollowedProfileActivity,
+  getNotificationPreferencesForProfile,
+  getNotificationsForProfile,
+  getUnreadNotificationCount
+} from "@human-layer/db";
 
+import { HelpfulButton } from "../../components/helpful-button";
 import { MarkNotificationsReadButton } from "../../components/mark-notifications-read-button";
+import { NotificationActions } from "../../components/notification-actions";
+import { NotificationPreferencesForm } from "../../components/notification-preferences-form";
 import { getAuthenticatedProfileFromCookies } from "../lib/auth";
 
 function formatPageKind(pageKind: string) {
@@ -31,7 +39,7 @@ export default async function NotificationsPage() {
 
   if (!viewer) {
     return (
-      <main className="page-shell stack">
+      <div className="page-shell stack">
         <section className="card hero-card stack">
           <span className="pill">Notifications</span>
           <h1>Follow graph and page activity</h1>
@@ -44,18 +52,19 @@ export default async function NotificationsPage() {
             </Link>
           </div>
         </section>
-      </main>
+      </div>
     );
   }
 
-  const [notifications, unreadCount, followedFeed] = await Promise.all([
+  const [notifications, unreadCount, followedFeed, preferences] = await Promise.all([
     getNotificationsForProfile(viewer.id, 50),
     getUnreadNotificationCount(viewer.id),
-    getFollowedProfileActivity(viewer.id, 12)
+    getFollowedProfileActivity(viewer.id, 12),
+    getNotificationPreferencesForProfile(viewer.id)
   ]);
 
   return (
-    <main className="page-shell stack">
+    <div className="page-shell stack">
       <section className="card hero-card stack">
         <div className="hero-row">
           <div className="stack compact">
@@ -84,6 +93,17 @@ export default async function NotificationsPage() {
 
       <section className="card stack">
         <div className="section-header">
+          <h2>Notification controls</h2>
+          <span className="muted">Tune the graph, then mute pages or people directly from any notification below.</span>
+        </div>
+        <NotificationPreferencesForm
+          initialBookmarkedPageComments={preferences.bookmarkedPageComments}
+          initialFollowedProfileTakes={preferences.followedProfileTakes}
+        />
+      </section>
+
+      <section className="card stack">
+        <div className="section-header">
           <h2>Latest notifications</h2>
           <span className="muted">Comments on bookmarked pages and new takes from followed people.</span>
         </div>
@@ -91,7 +111,7 @@ export default async function NotificationsPage() {
           <p className="muted">No notification activity yet. Bookmark pages and follow a few people to start the feed.</p>
         ) : (
           notifications.map((item) => (
-            <article className="stack comment-card" key={item.commentId}>
+            <article className="stack comment-card interactive" key={item.commentId}>
               <div className="section-header">
                 <div className="chip-row">
                   {item.unread ? <span className="pill">Unread</span> : <span className="trust-badge">Seen</span>}
@@ -119,6 +139,16 @@ export default async function NotificationsPage() {
                   Helpful {item.helpfulCount} • {formatPageKind(item.pageKind)} • {item.pageHost}
                 </p>
               </div>
+              <div className="inline-action-row">
+                <HelpfulButton commentId={item.commentId} initialCount={item.helpfulCount} />
+                <NotificationActions
+                  commentId={item.commentId}
+                  mutedHandle={item.authorHandle}
+                  mutedProfileId={item.authorProfileId}
+                  pageId={item.pageId}
+                  unread={item.unread}
+                />
+              </div>
               <div className="link-row">
                 <Link className="inline-link" href={`/pages/${item.pageId}`}>
                   Open Human Layer page
@@ -141,7 +171,7 @@ export default async function NotificationsPage() {
           <p className="muted">You are not following anyone with visible takes yet.</p>
         ) : (
           followedFeed.map((item) => (
-            <article className="stack comment-card" key={item.commentId}>
+            <article className="stack comment-card interactive" key={item.commentId}>
               <div className="section-header">
                 <div className="chip-row">
                   <span className="trust-badge">Following</span>
@@ -161,6 +191,7 @@ export default async function NotificationsPage() {
                 <p className="muted">{item.reason}</p>
                 <p>{item.body}</p>
               </div>
+              <HelpfulButton commentId={item.commentId} initialCount={item.helpfulCount} />
               <div className="link-row">
                 <Link className="inline-link" href={`/pages/${item.pageId}`}>
                   Open Human Layer page
@@ -173,6 +204,6 @@ export default async function NotificationsPage() {
           ))
         )}
       </section>
-    </main>
+    </div>
   );
 }

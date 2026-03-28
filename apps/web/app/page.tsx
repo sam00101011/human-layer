@@ -9,6 +9,7 @@ import {
 } from "@human-layer/db";
 
 import { FollowProfileButton } from "../components/follow-profile-button";
+import { HelpfulButton } from "../components/helpful-button";
 import { getAuthenticatedProfileFromCookies } from "./lib/auth";
 
 function formatPageKind(pageKind: string) {
@@ -40,8 +41,8 @@ export default async function HomePage(props: {
   ]);
 
   return (
-    <main className="page-shell stack">
-      <span className="pill">Discovery is live</span>
+    <div className="page-shell stack">
+      <span className="pill pill-notify">Discovery is live</span>
 
       <section className="card hero-card stack">
         <div className="hero-row">
@@ -159,6 +160,7 @@ export default async function HomePage(props: {
                         <p className="muted">
                           Helpful {take.helpfulCount} • {formatDate(take.createdAt)}
                         </p>
+                        <HelpfulButton commentId={take.commentId} initialCount={take.helpfulCount} />
                         <div className="link-row">
                           <Link className="inline-link" href={`/pages/${take.pageId}`}>
                             Open Human Layer page
@@ -266,6 +268,7 @@ export default async function HomePage(props: {
               <p className="muted">
                 Helpful {take.helpfulCount} • {formatDate(take.createdAt)} • {formatPageKind(take.pageKind)}
               </p>
+              <HelpfulButton commentId={take.commentId} initialCount={take.helpfulCount} />
               <div className="link-row">
                 <Link className="inline-link" href={`/pages/${take.pageId}`}>
                   Open Human Layer page
@@ -309,6 +312,7 @@ export default async function HomePage(props: {
                   <p className="muted">
                     {take.reason} • Helpful {take.helpfulCount} • {formatDate(take.createdAt)}
                   </p>
+                  <HelpfulButton commentId={take.commentId} initialCount={take.helpfulCount} />
                   <div className="link-row">
                     <Link className="inline-link" href={`/pages/${take.pageId}`}>
                       Open Human Layer page
@@ -378,6 +382,6 @@ export default async function HomePage(props: {
           </Link>
         </div>
       </section>
-    </main>
+    </div>
   );
 }

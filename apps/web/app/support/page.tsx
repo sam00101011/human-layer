@@ -9,7 +9,7 @@ export default async function SupportPage(props: {
   const contextUrl = searchParams.contextUrl?.trim();
 
   return (
-    <main className="page-shell stack legal-shell">
+    <div className="page-shell stack legal-shell">
       <span className="pill">Support</span>
 
       <section className="card stack">
@@ -76,6 +76,6 @@ export default async function SupportPage(props: {
           the privacy page as the privacy-policy URL until you move to a custom domain.
         </p>
       </section>
-    </main>
+    </div>
   );
 }

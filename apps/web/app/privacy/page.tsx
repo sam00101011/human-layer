@@ -1,6 +1,6 @@
 export default function PrivacyPage() {
   return (
-    <main className="page-shell stack legal-shell">
+    <div className="page-shell stack legal-shell">
       <span className="pill">Privacy</span>
 
       <section className="card stack">
@@ -73,6 +73,6 @@ export default function PrivacyPage() {
           improve the service. Material policy changes will be reflected on this page.
         </p>
       </section>
-    </main>
+    </div>
   );
 }
