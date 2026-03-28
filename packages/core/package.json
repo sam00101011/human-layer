@@ -1,0 +1,12 @@
+{
+  "name": "@human-layer/core",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "corepack pnpm exec tsc -p tsconfig.json --noEmit",
+    "test": "corepack pnpm exec vitest run"
+  }
+}

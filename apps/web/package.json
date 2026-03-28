@@ -1,0 +1,18 @@
+{
+  "name": "@human-layer/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "corepack pnpm exec next dev -H 127.0.0.1 -p 3000",
+    "build": "corepack pnpm exec next build",
+    "test": "corepack pnpm exec vitest run"
+  },
+  "dependencies": {
+    "@human-layer/core": "workspace:*",
+    "@human-layer/db": "workspace:*",
+    "@worldcoin/idkit": "^4.0.11",
+    "next": "^15.3.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  }
+}

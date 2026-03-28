@@ -1,0 +1,153 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+env:
+  DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5433/human_layer
+  SESSION_SECRET: ci-session-secret
+  EXTENSION_TOKEN_SECRET: ci-extension-token-secret
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: human_layer
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d human_layer"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.6.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: corepack pnpm install --frozen-lockfile
+
+      - name: Run database migrations
+        run: corepack pnpm db:migrate
+
+      - name: Seed foundation data
+        run: corepack pnpm db:seed
+
+      - name: Run tests
+        run: corepack pnpm test
+
+      - name: Run builds
+        run: corepack pnpm build
+
+  overlay-smoke:
+    runs-on: ubuntu-latest
+    needs: verify
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: human_layer
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d human_layer"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.6.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: corepack pnpm install --frozen-lockfile
+
+      - name: Run database migrations
+        run: corepack pnpm db:migrate
+
+      - name: Seed foundation data
+        run: corepack pnpm db:seed
+
+      - name: Install Playwright Chromium
+        run: corepack pnpm exec playwright install --with-deps chromium
+
+      - name: Start web dev server
+        run: |
+          mkdir -p output
+          corepack pnpm --filter @human-layer/web dev > output/ci-web.log 2>&1 &
+          echo $! > output/ci-web.pid
+
+      - name: Wait for lookup route
+        run: |
+          for attempt in {1..60}; do
+            if curl -fsS "http://127.0.0.1:3000/api/pages/lookup?url=https%3A%2F%2Fgithub.com%2Fvercel%2Fnext.js" >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat output/ci-web.log
+          exit 1
+
+      - name: Run overlay smoke test
+        env:
+          CI: "1"
+          HL_SMOKE_BROWSER_CHANNEL: chromium
+        run: xvfb-run -a corepack pnpm smoke:overlay
+
+      - name: Stop web dev server
+        if: always()
+        run: |
+          if [ -f output/ci-web.pid ]; then
+            kill "$(cat output/ci-web.pid)" || true
+          fi
+
+      - name: Upload smoke artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: overlay-smoke-artifacts
+          path: output

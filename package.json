@@ -1,0 +1,27 @@
+{
+  "name": "human-layer",
+  "private": true,
+  "packageManager": "pnpm@10.6.2",
+  "scripts": {
+    "dev:web": "corepack pnpm --filter @human-layer/web dev",
+    "dev:extension": "WXT_APP_URL=http://127.0.0.1:3000 corepack pnpm --filter @human-layer/extension dev",
+    "dev:reset": "corepack pnpm exec tsx scripts/dev-reset.ts",
+    "build": "corepack pnpm --filter @human-layer/core build && corepack pnpm --filter @human-layer/db build && corepack pnpm --filter @human-layer/web build && corepack pnpm --filter @human-layer/extension build",
+    "smoke:overlay": "corepack pnpm exec tsx scripts/smoke-overlay.ts",
+    "test": "corepack pnpm --filter @human-layer/core test && corepack pnpm --filter @human-layer/db test && corepack pnpm --filter @human-layer/web test && corepack pnpm --filter @human-layer/extension test",
+    "db:up": "docker compose up -d postgres redis",
+    "db:down": "docker compose down",
+    "db:migrate": "corepack pnpm --filter @human-layer/db migrate",
+    "db:seed": "corepack pnpm --filter @human-layer/db seed:foundation"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@types/node": "^22.13.10",
+    "@types/pg": "^8.15.1",
+    "@types/react": "^19.0.12",
+    "@types/react-dom": "^19.0.4",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vitest": "^3.2.4"
+  }
+}
