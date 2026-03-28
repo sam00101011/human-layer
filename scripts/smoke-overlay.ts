@@ -9,6 +9,7 @@ const extensionDir = join(rootDir, "apps", "extension", ".output", "chrome-mv3")
 const profileDir = join(rootDir, "output", "playwright", "overlay-smoke-profile");
 const artifactDir = join(rootDir, "output", "playwright");
 const appUrl = process.env.HL_SMOKE_APP_URL ?? "http://127.0.0.1:3000";
+const githubBaseUrl = "https://github.com";
 const githubRepoUrl = "https://github.com/vercel/next.js";
 const githubIssuePath = "/vercel/next.js/issues/56789";
 const githubPrPath = "/vercel/next.js/pull/12345";
@@ -58,10 +59,9 @@ async function waitForPopup(page: Page, action: () => Promise<void>) {
   return popup;
 }
 
-async function navigateWithHistory(page: Page, pathname: string) {
-  await page.evaluate((nextPath) => {
-    window.history.pushState({}, "", nextPath);
-  }, pathname);
+async function navigateToGitHubPath(page: Page, pathname: string) {
+  const url = new URL(pathname, githubBaseUrl).toString();
+  await page.goto(url, { waitUntil: "domcontentloaded" });
   await page.waitForURL(new RegExp(escapeRegex(pathname)), { timeout: 10000 });
 }
 
@@ -85,7 +85,7 @@ async function verifyHappyPath(page: Page) {
 }
 
 async function verifyClientSideNavigation(page: Page) {
-  await navigateWithHistory(page, githubIssuePath);
+  await navigateToGitHubPath(page, githubIssuePath);
   await expectOverlayTitle(page, "vercel/next.js issue #56789");
 }
 
@@ -96,7 +96,7 @@ async function verifyRetryShell(page: Page, context: BrowserContext) {
 
   await context.route(lookupPattern, abortLookup);
   try {
-    await navigateWithHistory(page, githubPrPath);
+    await navigateToGitHubPath(page, githubPrPath);
     await expect(getOverlay(page)).toContainText(overlayErrorText, { timeout: 12000 });
     retryShellVerified = true;
   } catch {
