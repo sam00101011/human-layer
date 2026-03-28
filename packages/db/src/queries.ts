@@ -1,10 +1,12 @@
 import {
+  buildPageContextSummary,
   EMPTY_VERDICT_COUNTS,
   INTEREST_TAGS,
   MAX_PROFILE_INTERESTS,
   SUPPORTED_DOMAIN_RULES,
   type InterestTag,
   type NormalizedPageCandidate,
+  type ProfileActivityItem,
   type ProfileSnapshot,
   pickTopHumanTake,
   type PageSummary,
@@ -12,7 +14,7 @@ import {
   type ThreadSnapshot,
   type Verdict
 } from "@human-layer/core";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
 import { createHash, randomBytes } from "node:crypto";
 
 import { db } from "./client";
@@ -75,6 +77,45 @@ export type ModerationQueueItem = {
   pageCanonicalUrl: string;
 };
 
+export type DiscoveryPage = PageSummary & {
+  verdictCount: number;
+  commentCount: number;
+  bookmarkCount: number;
+  activityScore: number;
+  summary: string;
+  tags: InterestTag[];
+};
+
+export type DiscoveryTake = {
+  commentId: string;
+  body: string;
+  createdAt: string;
+  helpfulCount: number;
+  profileId: string;
+  profileHandle: string;
+  pageId: string;
+  pageKind: PageSummary["pageKind"];
+  pageTitle: string;
+  canonicalUrl: string;
+};
+
+export type DiscoveryProfile = {
+  id: string;
+  handle: string;
+  verifiedHuman: boolean;
+  interestTags: InterestTag[];
+  commentCount: number;
+  followerCount: number;
+  sharedInterestCount: number;
+  reason: string;
+};
+
+export type DiscoverySearchResults = {
+  pages: DiscoveryPage[];
+  takes: DiscoveryTake[];
+  profiles: DiscoveryProfile[];
+};
+
 export class HandleTakenError extends Error {
   constructor(handle: string) {
     super(`handle ${handle} is already taken`);
@@ -111,6 +152,10 @@ function mapStoredProfile(row: {
     nullifierHash: row.nullifierHash,
     createdAt: row.createdAt.toISOString()
   };
+}
+
+function formatInterestList(tags: InterestTag[]) {
+  return tags.slice(0, 3).join(", ");
 }
 
 export async function seedSupportedDomainsManifest(): Promise<void> {
@@ -288,6 +333,385 @@ export async function getPageThreadSnapshot(pageId: string): Promise<ThreadSnaps
     verdictCounts,
     recentComments: projectedComments,
     topHumanTake: pickTopHumanTake(projectedComments)
+  };
+}
+
+export async function getTrendingPages(limit = 6): Promise<DiscoveryPage[]> {
+  const [verdictRows, commentRows, bookmarkRows] = await Promise.all([
+    db
+      .select({
+        pageId: verdicts.pageId,
+        count: sql<number>`count(*)::int`
+      })
+      .from(verdicts)
+      .groupBy(verdicts.pageId),
+    db
+      .select({
+        pageId: comments.pageId,
+        count: sql<number>`count(*)::int`
+      })
+      .from(comments)
+      .where(eq(comments.hidden, false))
+      .groupBy(comments.pageId),
+    db
+      .select({
+        pageId: saves.pageId,
+        count: sql<number>`count(*)::int`
+      })
+      .from(saves)
+      .groupBy(saves.pageId)
+  ]);
+
+  const verdictMap = new Map(verdictRows.map((row) => [row.pageId, row.count]));
+  const commentMap = new Map(commentRows.map((row) => [row.pageId, row.count]));
+  const bookmarkMap = new Map(bookmarkRows.map((row) => [row.pageId, row.count]));
+  const pageIds = [...new Set([...verdictMap.keys(), ...commentMap.keys(), ...bookmarkMap.keys()])];
+
+  if (pageIds.length === 0) return [];
+
+  const pageRows = await db
+    .select({
+      id: pages.id,
+      pageKind: pages.pageKind,
+      canonicalUrl: pages.canonicalUrl,
+      canonicalKey: pages.canonicalKey,
+      host: pages.host,
+      title: pages.title
+    })
+    .from(pages)
+    .where(inArray(pages.id, pageIds));
+
+  const rankedPages = pageRows
+    .map((row) => {
+      const verdictCount = verdictMap.get(row.id) ?? 0;
+      const commentCount = commentMap.get(row.id) ?? 0;
+      const bookmarkCount = bookmarkMap.get(row.id) ?? 0;
+
+      return {
+        ...row,
+        verdictCount,
+        commentCount,
+        bookmarkCount,
+        activityScore: verdictCount * 3 + commentCount * 4 + bookmarkCount * 2
+      };
+    })
+    .sort((left, right) => right.activityScore - left.activityScore || right.commentCount - left.commentCount)
+    .slice(0, limit);
+
+  const withContext = await Promise.all(
+    rankedPages.map(async (page) => {
+      const thread = await getPageThreadSnapshot(page.id);
+      const context = buildPageContextSummary({
+        page: {
+          pageKind: page.pageKind as PageSummary["pageKind"],
+          host: page.host,
+          title: page.title
+        },
+        thread
+      });
+
+      return {
+        id: page.id,
+        pageKind: page.pageKind as PageSummary["pageKind"],
+        canonicalUrl: page.canonicalUrl,
+        canonicalKey: page.canonicalKey,
+        host: page.host,
+        title: page.title,
+        verdictCount: page.verdictCount,
+        commentCount: page.commentCount,
+        bookmarkCount: page.bookmarkCount,
+        activityScore: page.activityScore,
+        summary: context.summary,
+        tags: context.tags
+      } satisfies DiscoveryPage;
+    })
+  );
+
+  return withContext;
+}
+
+export async function getRecommendedTakes(limit = 6): Promise<DiscoveryTake[]> {
+  const rows = await db
+    .select({
+      commentId: comments.id,
+      body: comments.body,
+      createdAt: comments.createdAt,
+      profileId: profiles.id,
+      profileHandle: profiles.handle,
+      pageId: pages.id,
+      pageKind: pages.pageKind,
+      pageTitle: pages.title,
+      canonicalUrl: pages.canonicalUrl,
+      helpfulCount: sql<number>`count(${commentHelpfulVotes.id})::int`
+    })
+    .from(comments)
+    .innerJoin(profiles, eq(profiles.id, comments.profileId))
+    .innerJoin(pages, eq(pages.id, comments.pageId))
+    .leftJoin(commentHelpfulVotes, eq(commentHelpfulVotes.commentId, comments.id))
+    .where(eq(comments.hidden, false))
+    .groupBy(
+      comments.id,
+      comments.body,
+      comments.createdAt,
+      profiles.id,
+      profiles.handle,
+      pages.id,
+      pages.pageKind,
+      pages.title,
+      pages.canonicalUrl
+    )
+    .orderBy(desc(sql<number>`count(${commentHelpfulVotes.id})::int`), desc(comments.createdAt))
+    .limit(limit);
+
+  return rows.map((row) => ({
+    commentId: row.commentId,
+    body: row.body,
+    createdAt: row.createdAt.toISOString(),
+    helpfulCount: row.helpfulCount,
+    profileId: row.profileId,
+    profileHandle: row.profileHandle,
+    pageId: row.pageId,
+    pageKind: row.pageKind as PageSummary["pageKind"],
+    pageTitle: row.pageTitle,
+    canonicalUrl: row.canonicalUrl
+  }));
+}
+
+export async function getPeopleToFollow(limit = 6, viewerProfileId?: string): Promise<DiscoveryProfile[]> {
+  const [profileRows, commentRows, followerRows, followedRows, viewerRow] = await Promise.all([
+    db
+      .select({
+        id: profiles.id,
+        handle: profiles.handle,
+        interestTags: profiles.interestTags,
+        nullifierHash: profiles.nullifierHash
+      })
+      .from(profiles)
+      .where(viewerProfileId ? ne(profiles.id, viewerProfileId) : undefined),
+    db
+      .select({
+        profileId: comments.profileId,
+        count: sql<number>`count(*)::int`
+      })
+      .from(comments)
+      .where(eq(comments.hidden, false))
+      .groupBy(comments.profileId),
+    db
+      .select({
+        profileId: follows.followeeProfileId,
+        count: sql<number>`count(*)::int`
+      })
+      .from(follows)
+      .groupBy(follows.followeeProfileId),
+    viewerProfileId
+      ? db
+          .select({
+            followeeProfileId: follows.followeeProfileId
+          })
+          .from(follows)
+          .where(eq(follows.followerProfileId, viewerProfileId))
+      : Promise.resolve([]),
+    viewerProfileId
+      ? db.query.profiles.findFirst({
+          where: eq(profiles.id, viewerProfileId)
+        })
+      : Promise.resolve(null)
+  ]);
+
+  const commentCountMap = new Map(commentRows.map((row) => [row.profileId, row.count]));
+  const followerCountMap = new Map(followerRows.map((row) => [row.profileId, row.count]));
+  const followedIds = new Set(followedRows.map((row) => row.followeeProfileId));
+  const viewerInterestTags = viewerRow ? coerceInterestTags(viewerRow.interestTags) : [];
+
+  return profileRows
+    .filter((row) => Boolean(row.nullifierHash))
+    .filter((row) => !followedIds.has(row.id))
+    .map((row) => {
+      const interestTags = coerceInterestTags(row.interestTags);
+      const sharedInterestCount = viewerInterestTags.filter((tag) => interestTags.includes(tag)).length;
+      const commentCount = commentCountMap.get(row.id) ?? 0;
+      const followerCount = followerCountMap.get(row.id) ?? 0;
+      const verifiedHuman = Boolean(row.nullifierHash);
+      const score = (verifiedHuman ? 6 : 0) + commentCount * 3 + followerCount * 2 + sharedInterestCount * 4;
+      const reasonParts = [];
+
+      if (sharedInterestCount > 0) {
+        reasonParts.push(`Shared interests in ${formatInterestList(interestTags)}`);
+      } else if (interestTags.length > 0) {
+        reasonParts.push(`Active around ${formatInterestList(interestTags)}`);
+      }
+
+      reasonParts.push(`${commentCount} public take${commentCount === 1 ? "" : "s"}`);
+      reasonParts.push(`${followerCount} follower${followerCount === 1 ? "" : "s"}`);
+
+      return {
+        id: row.id,
+        handle: row.handle,
+        verifiedHuman,
+        interestTags,
+        commentCount,
+        followerCount,
+        sharedInterestCount,
+        score,
+        reason: reasonParts.join(" • ")
+      };
+    })
+    .sort((left, right) => right.score - left.score || right.commentCount - left.commentCount)
+    .slice(0, limit)
+    .map(({ score: _score, ...profile }) => profile);
+}
+
+export async function searchDiscovery(query: string, limit = 6): Promise<DiscoverySearchResults> {
+  const trimmed = query.trim();
+  if (!trimmed) {
+    return {
+      pages: [],
+      takes: [],
+      profiles: []
+    };
+  }
+
+  const pattern = `%${trimmed}%`;
+
+  const [pageRows, takeRows, profileRows, commentRows, followerRows] = await Promise.all([
+    db
+      .select({
+        id: pages.id,
+        pageKind: pages.pageKind,
+        canonicalUrl: pages.canonicalUrl,
+        canonicalKey: pages.canonicalKey,
+        host: pages.host,
+        title: pages.title
+      })
+      .from(pages)
+      .where(or(ilike(pages.title, pattern), ilike(pages.host, pattern), ilike(pages.canonicalUrl, pattern)))
+      .limit(limit),
+    db
+      .select({
+        commentId: comments.id,
+        body: comments.body,
+        createdAt: comments.createdAt,
+        profileId: profiles.id,
+        profileHandle: profiles.handle,
+        pageId: pages.id,
+        pageKind: pages.pageKind,
+        pageTitle: pages.title,
+        canonicalUrl: pages.canonicalUrl,
+        helpfulCount: sql<number>`count(${commentHelpfulVotes.id})::int`
+      })
+      .from(comments)
+      .innerJoin(profiles, eq(profiles.id, comments.profileId))
+      .innerJoin(pages, eq(pages.id, comments.pageId))
+      .leftJoin(commentHelpfulVotes, eq(commentHelpfulVotes.commentId, comments.id))
+      .where(and(eq(comments.hidden, false), or(ilike(comments.body, pattern), ilike(pages.title, pattern))))
+      .groupBy(
+        comments.id,
+        comments.body,
+        comments.createdAt,
+        profiles.id,
+        profiles.handle,
+        pages.id,
+        pages.pageKind,
+        pages.title,
+        pages.canonicalUrl
+      )
+      .orderBy(desc(sql<number>`count(${commentHelpfulVotes.id})::int`), desc(comments.createdAt))
+      .limit(limit),
+    db
+      .select({
+        id: profiles.id,
+        handle: profiles.handle,
+        interestTags: profiles.interestTags,
+        nullifierHash: profiles.nullifierHash
+      })
+      .from(profiles)
+      .where(
+        or(
+          ilike(profiles.handle, pattern),
+          sql<boolean>`CAST(${profiles.interestTags} AS text) ILIKE ${pattern}`
+        )
+      )
+      .limit(limit),
+    db
+      .select({
+        profileId: comments.profileId,
+        count: sql<number>`count(*)::int`
+      })
+      .from(comments)
+      .where(eq(comments.hidden, false))
+      .groupBy(comments.profileId),
+    db
+      .select({
+        profileId: follows.followeeProfileId,
+        count: sql<number>`count(*)::int`
+      })
+      .from(follows)
+      .groupBy(follows.followeeProfileId)
+  ]);
+
+  const commentCountMap = new Map(commentRows.map((row) => [row.profileId, row.count]));
+  const followerCountMap = new Map(followerRows.map((row) => [row.profileId, row.count]));
+
+  const pagesWithContext = await Promise.all(
+    pageRows.map(async (page) => {
+      const thread = await getPageThreadSnapshot(page.id);
+      const context = buildPageContextSummary({
+        page: {
+          pageKind: page.pageKind as PageSummary["pageKind"],
+          host: page.host,
+          title: page.title
+        },
+        thread
+      });
+
+      return {
+        id: page.id,
+        pageKind: page.pageKind as PageSummary["pageKind"],
+        canonicalUrl: page.canonicalUrl,
+        canonicalKey: page.canonicalKey,
+        host: page.host,
+        title: page.title,
+        verdictCount: Object.values(thread.verdictCounts).reduce((sum, count) => sum + count, 0),
+        commentCount: thread.recentComments.length,
+        bookmarkCount: 0,
+        activityScore: Object.values(thread.verdictCounts).reduce((sum, count) => sum + count, 0) + thread.recentComments.length,
+        summary: context.summary,
+        tags: context.tags
+      } satisfies DiscoveryPage;
+    })
+  );
+
+  return {
+    pages: pagesWithContext,
+    takes: takeRows.map((row) => ({
+      commentId: row.commentId,
+      body: row.body,
+      createdAt: row.createdAt.toISOString(),
+      helpfulCount: row.helpfulCount,
+      profileId: row.profileId,
+      profileHandle: row.profileHandle,
+      pageId: row.pageId,
+      pageKind: row.pageKind as PageSummary["pageKind"],
+      pageTitle: row.pageTitle,
+      canonicalUrl: row.canonicalUrl
+    })),
+    profiles: profileRows.map((row) => {
+      const interestTags = coerceInterestTags(row.interestTags);
+      const commentCount = commentCountMap.get(row.id) ?? 0;
+      const followerCount = followerCountMap.get(row.id) ?? 0;
+      return {
+        id: row.id,
+        handle: row.handle,
+        verifiedHuman: Boolean(row.nullifierHash),
+        interestTags,
+        commentCount,
+        followerCount,
+        sharedInterestCount: 0,
+        reason: interestTags.length
+          ? `Active around ${formatInterestList(interestTags)} • ${commentCount} public takes`
+          : `${commentCount} public takes • ${followerCount} followers`
+      } satisfies DiscoveryProfile;
+    })
   };
 }
 
@@ -558,6 +982,94 @@ async function getRecentProfileComments(profileId: string): Promise<ProfileSnaps
   }));
 }
 
+async function getProfileActivity(profileId: string): Promise<ProfileActivityItem[]> {
+  const [commentRows, verdictRows, bookmarkRows] = await Promise.all([
+    db
+      .select({
+        id: comments.id,
+        createdAt: comments.createdAt,
+        body: comments.body,
+        pageId: pages.id,
+        pageKind: pages.pageKind,
+        pageTitle: pages.title,
+        canonicalUrl: pages.canonicalUrl
+      })
+      .from(comments)
+      .innerJoin(pages, eq(pages.id, comments.pageId))
+      .where(and(eq(comments.profileId, profileId), eq(comments.hidden, false)))
+      .orderBy(desc(comments.createdAt))
+      .limit(8),
+    db
+      .select({
+        id: verdicts.id,
+        createdAt: verdicts.createdAt,
+        verdict: verdicts.verdict,
+        pageId: pages.id,
+        pageKind: pages.pageKind,
+        pageTitle: pages.title,
+        canonicalUrl: pages.canonicalUrl
+      })
+      .from(verdicts)
+      .innerJoin(pages, eq(pages.id, verdicts.pageId))
+      .where(eq(verdicts.profileId, profileId))
+      .orderBy(desc(verdicts.createdAt))
+      .limit(8),
+    db
+      .select({
+        id: saves.id,
+        createdAt: saves.createdAt,
+        pageId: pages.id,
+        pageKind: pages.pageKind,
+        pageTitle: pages.title,
+        canonicalUrl: pages.canonicalUrl
+      })
+      .from(saves)
+      .innerJoin(pages, eq(pages.id, saves.pageId))
+      .where(eq(saves.profileId, profileId))
+      .orderBy(desc(saves.createdAt))
+      .limit(8)
+  ]);
+
+  const activity: ProfileActivityItem[] = [
+    ...commentRows.map((row) => ({
+      id: row.id,
+      type: "comment" as const,
+      createdAt: row.createdAt.toISOString(),
+      pageId: row.pageId,
+      pageKind: row.pageKind as PageSummary["pageKind"],
+      pageTitle: row.pageTitle,
+      canonicalUrl: row.canonicalUrl,
+      summary: row.body,
+      commentId: row.id
+    })),
+    ...verdictRows.map((row) => ({
+      id: row.id,
+      type: "verdict" as const,
+      createdAt: row.createdAt.toISOString(),
+      pageId: row.pageId,
+      pageKind: row.pageKind as PageSummary["pageKind"],
+      pageTitle: row.pageTitle,
+      canonicalUrl: row.canonicalUrl,
+      summary: `Marked this page as ${row.verdict}.`,
+      verdict: row.verdict as Verdict
+    })),
+    ...bookmarkRows.map((row) => ({
+      id: row.id,
+      type: "bookmark" as const,
+      createdAt: row.createdAt.toISOString(),
+      pageId: row.pageId,
+      pageKind: row.pageKind as PageSummary["pageKind"],
+      pageTitle: row.pageTitle,
+      canonicalUrl: row.canonicalUrl,
+      summary: "Bookmarked this page to come back to it later."
+    }))
+  ];
+
+  return activity
+    .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+    .slice(0, 12);
+}
+
 async function getSavedPages(profileId: string): Promise<PageSummary[]> {
   const rows = await db
     .select({
@@ -617,10 +1129,11 @@ export async function getBookmarkedPagesForProfile(
 }
 
 async function buildProfileSnapshot(profile: StoredProfile): Promise<ProfileSnapshot> {
-  const [counts, recentComments, savedPages] = await Promise.all([
+  const [counts, recentComments, savedPages, activity] = await Promise.all([
     getProfileCounts(profile.id),
     getRecentProfileComments(profile.id),
-    getSavedPages(profile.id)
+    getSavedPages(profile.id),
+    getProfileActivity(profile.id)
   ]);
 
   return {
@@ -631,6 +1144,7 @@ async function buildProfileSnapshot(profile: StoredProfile): Promise<ProfileSnap
     counts,
     recentComments,
     savedPages,
+    activity,
     createdAt: profile.createdAt
   };
 }

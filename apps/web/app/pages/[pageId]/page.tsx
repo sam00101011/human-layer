@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { buildPageContextSummary } from "@human-layer/core";
 import { findPageById, getPageThreadSnapshot } from "@human-layer/db";
 import { notFound } from "next/navigation";
 
@@ -23,6 +24,7 @@ export default async function HumanLayerPage(props: {
   }
 
   const thread = await getPageThreadSnapshot(page.id);
+  const pageContext = buildPageContextSummary({ page, thread });
   const verdictTotal = Object.values(thread.verdictCounts).reduce((sum, count) => sum + count, 0);
 
   return (
@@ -32,13 +34,11 @@ export default async function HumanLayerPage(props: {
           <div className="stack compact">
             <div className="chip-row">
               <span className="pill">Human Layer page</span>
+              <span className="trust-badge">Verified takes only</span>
               <span className="eyebrow">{formatPageKind(page.pageKind)} on {page.host}</span>
             </div>
             <h1>{page.title}</h1>
-            <p className="muted">
-              Verified-human context for this page lives here. Read the top take, scan the
-              current verdict mix, and jump back to the original source whenever you need the raw page.
-            </p>
+            <p className="muted">{pageContext.summary}</p>
           </div>
           <div className="action-row">
             <Link className="button" href={page.canonicalUrl} rel="noreferrer" target="_blank">
@@ -55,6 +55,16 @@ export default async function HumanLayerPage(props: {
           </div>
         </div>
 
+        {pageContext.tags.length > 0 ? (
+          <div className="chip-row">
+            {pageContext.tags.map((tag) => (
+              <span className="chip" key={tag}>
+                {tag}
+              </span>
+            ))}
+          </div>
+        ) : null}
+
         <div className="metric-grid">
           <div className="stat-card">
             <strong>{verdictTotal}</strong>
@@ -62,7 +72,7 @@ export default async function HumanLayerPage(props: {
           </div>
           <div className="stat-card">
             <strong>{thread.recentComments.length}</strong>
-            <span className="muted">Recent comments</span>
+            <span className="muted">Verified takes</span>
           </div>
           <div className="stat-card">
             <strong>{thread.topHumanTake?.helpfulCount ?? 0}</strong>
@@ -73,15 +83,31 @@ export default async function HumanLayerPage(props: {
 
       <section className="card stack">
         <div className="section-header">
+          <h2>Why this page matters</h2>
+          <span className="muted">A faster read on what verified humans are noticing here.</span>
+        </div>
+        <p className="muted">{pageContext.summary}</p>
+        <ul className="signal-list">
+          {pageContext.whyItMatters.map((reason) => (
+            <li key={reason}>{reason}</li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="card stack">
+        <div className="section-header">
           <h2>Top human take</h2>
           <span className="muted">Most useful verified perspective right now.</span>
         </div>
         {thread.topHumanTake ? (
           <article className="stack comment-card">
             <div className="comment-meta">
-              <Link className="inline-link" href={`/profiles/${thread.topHumanTake.profileHandle}`}>
-                @{thread.topHumanTake.profileHandle}
-              </Link>
+              <div className="chip-row">
+                <span className="trust-badge">Verified take</span>
+                <Link className="inline-link" href={`/profiles/${thread.topHumanTake.profileHandle}`}>
+                  @{thread.topHumanTake.profileHandle}
+                </Link>
+              </div>
               <span className="muted">
                 Helpful {thread.topHumanTake.helpfulCount} • {formatDate(thread.topHumanTake.createdAt)}
               </span>
@@ -111,7 +137,7 @@ export default async function HumanLayerPage(props: {
 
       <section className="card stack">
         <div className="section-header">
-          <h2>Recent comments</h2>
+          <h2>Recent verified takes</h2>
           <span className="muted">Fresh contributions from verified profiles.</span>
         </div>
         {thread.recentComments.length === 0 ? (
@@ -120,9 +146,12 @@ export default async function HumanLayerPage(props: {
           thread.recentComments.map((comment) => (
             <article className="stack comment-card" key={comment.commentId}>
               <div className="comment-meta">
-                <Link className="inline-link" href={`/profiles/${comment.profileHandle}`}>
-                  @{comment.profileHandle}
-                </Link>
+                <div className="chip-row">
+                  <span className="trust-badge">Verified take</span>
+                  <Link className="inline-link" href={`/profiles/${comment.profileHandle}`}>
+                    @{comment.profileHandle}
+                  </Link>
+                </div>
                 <span className="muted">
                   Helpful {comment.helpfulCount} • {formatDate(comment.createdAt)}
                 </span>

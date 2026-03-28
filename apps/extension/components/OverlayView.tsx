@@ -1,5 +1,10 @@
 import type { CSSProperties, ReactNode } from "react";
-import type { NormalizedPageCandidate, PageLookupResponse, Verdict } from "@human-layer/core";
+import {
+  buildPageContextSummary,
+  type NormalizedPageCandidate,
+  type PageLookupResponse,
+  type Verdict
+} from "@human-layer/core";
 import { Bookmark, BookmarkCheck } from "lucide-react";
 
 import type { OverlaySurfaceState } from "./OverlayController";
@@ -91,6 +96,30 @@ function renderVerdictCounts(lookup: PageLookupResponse) {
           <strong>{count}</strong>
         </div>
       ))}
+    </div>
+  );
+}
+
+function renderPageContext(lookup: PageLookupResponse) {
+  if (!lookup.page || !lookup.thread) return null;
+
+  const context = buildPageContextSummary({
+    page: lookup.page,
+    thread: lookup.thread
+  });
+
+  return (
+    <div style={contextCardStyle}>
+      {context.tags.length > 0 ? (
+        <div style={contextTagRowStyle}>
+          {context.tags.map((tag) => (
+            <span key={tag} style={contextTagStyle}>
+              {tag}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      <p style={helperNoteStyle}>{context.summary}</p>
     </div>
   );
 }
@@ -277,6 +306,7 @@ export function OverlayView(props: OverlayViewProps) {
 
       {lookup.state === "empty" ? (
         <div style={{ display: "grid", gap: 12 }}>
+          {renderPageContext(lookup)}
           <p style={mutedStyle}>
             This page is supported, but there are no verified takes yet. Be the first verified
             human to leave a verdict or comment.
@@ -304,6 +334,7 @@ export function OverlayView(props: OverlayViewProps) {
         </div>
       ) : (
         <div style={{ display: "grid", gap: 12 }}>
+          {renderPageContext(lookup)}
           {lookup.viewer ? (
             <div style={{ display: "grid", gap: 8 }}>
               <div style={{ ...pillStyle, width: "fit-content" }}>
@@ -325,12 +356,15 @@ export function OverlayView(props: OverlayViewProps) {
           )}
           <div style={{ display: "grid", gap: 6 }}>
             <span style={sectionLabelStyle}>Top human take</span>
-            {lookup.thread.topHumanTake
-              ? renderProfileHandle({
+            {lookup.thread.topHumanTake ? (
+              <div style={{ display: "grid", gap: 6 }}>
+                <span style={miniTrustChipStyle}>Verified take</span>
+                {renderProfileHandle({
                   handle: lookup.thread.topHumanTake.profileHandle,
                   onOpenProfile: props.onOpenProfile
-                })
-              : null}
+                })}
+              </div>
+            ) : null}
             <p style={quoteStyle}>{lookup.thread.topHumanTake?.body ?? "No top human take yet."}</p>
             {lookup.thread.topHumanTake
               ? renderFollowButton({
@@ -355,9 +389,10 @@ export function OverlayView(props: OverlayViewProps) {
             {renderVerdictCounts(lookup)}
           </div>
           <div style={{ display: "grid", gap: 6 }}>
-            <span style={sectionLabelStyle}>Recent comments</span>
+            <span style={sectionLabelStyle}>Recent verified takes</span>
             {lookup.thread.recentComments.map((comment) => (
               <div key={comment.commentId} style={commentStyle}>
+                <span style={miniTrustChipStyle}>Verified take</span>
                 {renderProfileHandle({
                   handle: comment.profileHandle,
                   onOpenProfile: props.onOpenProfile
@@ -471,6 +506,30 @@ const helperNoteStyle: CSSProperties = {
   fontSize: 12
 };
 
+const contextCardStyle: CSSProperties = {
+  display: "grid",
+  gap: 8,
+  padding: 10,
+  borderRadius: 12,
+  background: "rgba(255, 255, 255, 0.06)"
+};
+
+const contextTagRowStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 6
+};
+
+const contextTagStyle: CSSProperties = {
+  borderRadius: 999,
+  padding: "4px 8px",
+  background: "rgba(250, 204, 21, 0.16)",
+  color: "#fde68a",
+  fontSize: 11,
+  fontWeight: 700,
+  textTransform: "capitalize"
+};
+
 const profileHandleButtonStyle: CSSProperties = {
   border: "none",
   background: "transparent",
@@ -495,6 +554,16 @@ const sectionLabelStyle: CSSProperties = {
   fontWeight: 700,
   letterSpacing: "0.08em",
   textTransform: "uppercase"
+};
+
+const miniTrustChipStyle: CSSProperties = {
+  width: "fit-content",
+  borderRadius: 999,
+  padding: "4px 8px",
+  background: "rgba(59, 130, 246, 0.16)",
+  color: "#bfdbfe",
+  fontSize: 11,
+  fontWeight: 700
 };
 
 const quoteStyle: CSSProperties = {

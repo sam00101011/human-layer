@@ -28,6 +28,9 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               Human Layer
             </Link>
             <div className="top-nav-links">
+              <Link className="top-nav-link" href="/">
+                Discover
+              </Link>
               <Link className="top-nav-link" href="/verify">
                 Verify
               </Link>
@@ -56,6 +59,9 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           <div className="site-footer-inner">
             <span className="site-footer-brand">Human Layer beta</span>
             <div className="site-footer-links">
+              <Link className="site-footer-link" href="/">
+                Discover
+              </Link>
               <Link className="site-footer-link" href="/bookmarks">
                 Bookmarks
               </Link>

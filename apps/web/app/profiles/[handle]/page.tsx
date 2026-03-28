@@ -12,6 +12,38 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(new Date(value));
 }
 
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(new Date(value));
+}
+
+function formatActivityType(value: "comment" | "verdict" | "bookmark") {
+  if (value === "comment") return "Published take";
+  if (value === "verdict") return "Verdict";
+  return "Bookmark";
+}
+
+function buildTrustSignals(profile: NonNullable<Awaited<ReturnType<typeof getProfileSnapshotByHandle>>>) {
+  const signals = [
+    profile.verifiedHuman
+      ? "Verified-human write access is active for this pseudonymous profile."
+      : "Verification is not active yet, so trust is limited to public activity only.",
+    `${profile.counts.comments} public take${profile.counts.comments === 1 ? "" : "s"} and ${profile.counts.saves} bookmark${profile.counts.saves === 1 ? "" : "s"} are visible on this profile.`,
+    profile.activity?.length
+      ? "Contribution history is timestamped below so readers can inspect how this profile participates over time."
+      : "This profile does not have public contribution history yet.",
+    profile.interestTags.length
+      ? `Most active around ${profile.interestTags.slice(0, 3).join(", ")}.`
+      : "No declared interest tags yet."
+  ];
+
+  return signals;
+}
+
 export default async function ProfilePage(props: {
   params: Promise<{ handle: string }>;
 }) {
@@ -22,20 +54,25 @@ export default async function ProfilePage(props: {
     notFound();
   }
 
+  const activity = profile.activity ?? [];
+  const trustSignals = buildTrustSignals(profile);
+
   return (
     <main className="page-shell stack">
       <section className="card hero-card stack">
         <div className="hero-row">
           <div className="stack compact">
             <div className="chip-row">
-              <span className="pill">Verified human profile</span>
+              <span className="pill">{profile.verifiedHuman ? "Verified human" : "Profile"}</span>
+              <span className="trust-badge">Pseudonymous</span>
+              <span className="trust-badge">{activity.length > 0 ? "Activity visible" : "Public identity"}</span>
               <span className="eyebrow">Joined {formatDate(profile.createdAt)}</span>
             </div>
             <h1>@{profile.handle}</h1>
             <p className="muted">
               {profile.verifiedHuman
-                ? "One-human write access is active for this pseudonymous profile."
-                : "This profile is not verified yet."}
+                ? "One verified human controls this pseudonymous identity. Trust comes from a mix of verification, visible contributions, and the pages this profile keeps coming back to."
+                : "This profile is not verified yet, so treat it as an unverified public identity."}
             </p>
           </div>
         </div>
@@ -53,7 +90,7 @@ export default async function ProfilePage(props: {
         <div className="metric-grid">
           <div className="stat-card">
             <strong>{profile.counts.comments}</strong>
-            <span className="muted">Comments</span>
+            <span className="muted">Published takes</span>
           </div>
           <div className="stat-card">
             <strong>{profile.counts.saves}</strong>
@@ -72,19 +109,76 @@ export default async function ProfilePage(props: {
 
       <section className="card stack">
         <div className="section-header">
-          <h2>Recent comments</h2>
-          <span className="muted">What this profile has been adding lately.</span>
+          <h2>Trust signals</h2>
+          <span className="muted">What makes this profile feel more credible at a glance.</span>
+        </div>
+        <div className="trust-grid">
+          {trustSignals.map((signal) => (
+            <article className="trust-card" key={signal}>
+              <span className="trust-badge">{profile.verifiedHuman ? "Verified human" : "Trust note"}</span>
+              <p>{signal}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="card stack">
+        <div className="section-header">
+          <h2>Contribution history</h2>
+          <span className="muted">Recent public activity from this pseudonymous verified-human profile.</span>
+        </div>
+        {activity.length === 0 ? (
+          <p className="muted">No visible contribution history yet.</p>
+        ) : (
+          <div className="activity-list">
+            {activity.map((item) => (
+              <article className="activity-card" key={`${item.type}-${item.id}`}>
+                <div className="section-header">
+                  <div className="chip-row">
+                    <span className="trust-badge">{formatActivityType(item.type)}</span>
+                    {profile.verifiedHuman ? <span className="trust-badge soft">Verified human</span> : null}
+                  </div>
+                  <span className="muted">{formatDateTime(item.createdAt)}</span>
+                </div>
+                <div className="stack compact">
+                  <strong>{item.pageTitle}</strong>
+                  <p className="muted">{item.summary}</p>
+                  <p className="muted">{formatPageKind(item.pageKind)}</p>
+                </div>
+                <div className="link-row">
+                  <Link className="inline-link" href={`/pages/${item.pageId}`}>
+                    Open Human Layer page
+                  </Link>
+                  <Link className="inline-link" href={item.canonicalUrl} rel="noreferrer" target="_blank">
+                    Open source page
+                  </Link>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="card stack">
+        <div className="section-header">
+          <h2>Recent takes</h2>
+          <span className="muted">What this verified-human profile has been publishing lately.</span>
         </div>
         {profile.recentComments.length === 0 ? (
           <p className="muted">No comments yet.</p>
         ) : (
           profile.recentComments.map((comment) => (
             <article className="stack comment-card" key={comment.commentId}>
-              <div className="stack compact">
-                <strong>{comment.pageTitle}</strong>
-                <p className="muted">
-                  {formatPageKind(comment.pageKind)} • Helpful {comment.helpfulCount} • {formatDate(comment.createdAt)}
-                </p>
+              <div className="comment-meta">
+                <div className="stack compact">
+                  <div className="chip-row">
+                    <span className="trust-badge">Verified take</span>
+                    <strong>{comment.pageTitle}</strong>
+                  </div>
+                  <p className="muted">
+                    {formatPageKind(comment.pageKind)} • Helpful {comment.helpfulCount} • {formatDate(comment.createdAt)}
+                  </p>
+                </div>
               </div>
               <p>{comment.body}</p>
               <ReportCommentButton commentId={comment.commentId} compact />
@@ -104,7 +198,7 @@ export default async function ProfilePage(props: {
       <section className="card stack">
         <div className="section-header">
           <h2>Bookmarked pages</h2>
-          <span className="muted">Pages this profile wanted to come back to.</span>
+          <span className="muted">Pages this profile thought were worth revisiting.</span>
         </div>
         {profile.savedPages.length === 0 ? (
           <p className="muted">No bookmarked pages yet.</p>

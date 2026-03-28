@@ -216,6 +216,19 @@ export type ProfileCommentSummary = CommentProjection & {
   canonicalUrl: string;
 };
 
+export type ProfileActivityItem = {
+  id: string;
+  type: "comment" | "verdict" | "bookmark";
+  createdAt: string;
+  pageId: string;
+  pageKind: PageKind;
+  pageTitle: string;
+  canonicalUrl: string;
+  summary: string;
+  commentId?: string;
+  verdict?: Verdict;
+};
+
 export type ProfileSnapshot = {
   id: string;
   handle: string;
@@ -224,6 +237,7 @@ export type ProfileSnapshot = {
   counts: ProfileCounts;
   recentComments: ProfileCommentSummary[];
   savedPages: PageSummary[];
+  activity?: ProfileActivityItem[];
   createdAt: string;
 };
 
