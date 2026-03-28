@@ -35,16 +35,16 @@ Already configured:
 
 ## Sentry alerts to configure
 
-Human Layer already emits structured lookup and World ID verification failures. Configure Sentry alerts for:
+Human Layer now forwards structured lookup and World ID verification failures to Sentry from the web app. Configure Sentry alerts for:
 
 1. World ID verification failures
-   - filter for `event: world_id_verify_failed`
+   - filter for `message:"world_id_verify_failed"` or `human_layer_event:world_id_verify_failed`
    - alert when failures spike above baseline in a 10-minute window
    - recommended alert title: `Human Layer: World ID verification failures`
    - recommended condition: more than 5 events in 10 minutes
 
 2. Page lookup failures
-   - filter for `event: lookup_route_failed` or lookup 5xx responses
+   - filter for `message:"lookup_route_failed"` or `human_layer_event:lookup_route_failed`
    - alert on repeated failures in a short window
    - recommended alert title: `Human Layer: lookup route failures`
    - recommended condition: more than 5 events in 10 minutes

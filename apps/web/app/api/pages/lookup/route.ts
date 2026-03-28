@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getAuthenticatedProfileFromRequest, toViewer } from "../../../lib/auth";
 import { lookupPageByUrl } from "../../../lib/page-lookup";
+import { captureSentryOperationalEvent } from "../../../lib/sentry";
 
 function serializeLookupError(error: unknown) {
   if (error instanceof Error) {
@@ -33,15 +34,23 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     const requestId = crypto.randomUUID();
+    const extra = {
+      route: request.nextUrl.pathname,
+      method: request.method,
+      requestId,
+      rawUrl,
+      error: serializeLookupError(error)
+    };
+
+    await captureSentryOperationalEvent({
+      event: "lookup_route_failed",
+      extra
+    });
 
     console.error(
       JSON.stringify({
         event: "lookup_route_failed",
-        route: request.nextUrl.pathname,
-        method: request.method,
-        requestId,
-        rawUrl,
-        error: serializeLookupError(error)
+        ...extra
       })
     );
 

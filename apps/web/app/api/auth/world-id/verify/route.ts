@@ -16,6 +16,7 @@ import {
   WorldIdVerificationError,
   verifyWorldIdSubmission
 } from "../../../../lib/world-id";
+import { captureSentryOperationalEvent } from "../../../../lib/sentry";
 
 const handlePattern = /^[a-z0-9_]{3,24}$/;
 
@@ -128,23 +129,31 @@ export async function POST(request: NextRequest) {
     return response;
   } catch (error) {
     const requestId = crypto.randomUUID();
+    const extra = {
+      route: request.nextUrl.pathname,
+      method: request.method,
+      requestId,
+      handle,
+      handoff: body?.handoff ?? false,
+      verificationLevel: body?.verificationLevel ?? null,
+      protocolVersion: body?.worldIdResult?.protocol_version ?? null,
+      hasProof: Boolean(body?.proof),
+      hasMerkleRoot: Boolean(body?.merkleRoot),
+      hasNullifierHash: Boolean(body?.nullifierHash),
+      hasSignalHash: Boolean(body?.signalHash),
+      hasWorldIdResult: Boolean(body?.worldIdResult),
+      error: serializeVerifyError(error)
+    };
+
+    await captureSentryOperationalEvent({
+      event: "world_id_verify_failed",
+      extra
+    });
 
     console.error(
       JSON.stringify({
         event: "world_id_verify_failed",
-        route: request.nextUrl.pathname,
-        method: request.method,
-        requestId,
-        handle,
-        handoff: body?.handoff ?? false,
-        verificationLevel: body?.verificationLevel ?? null,
-        protocolVersion: body?.worldIdResult?.protocol_version ?? null,
-        hasProof: Boolean(body?.proof),
-        hasMerkleRoot: Boolean(body?.merkleRoot),
-        hasNullifierHash: Boolean(body?.nullifierHash),
-        hasSignalHash: Boolean(body?.signalHash),
-        hasWorldIdResult: Boolean(body?.worldIdResult),
-        error: serializeVerifyError(error)
+        ...extra
       })
     );
 
