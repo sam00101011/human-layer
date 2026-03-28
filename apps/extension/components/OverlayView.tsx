@@ -30,6 +30,17 @@ function formatPageKind(pageKind: string) {
   return pageKind.replace(/_/g, " ");
 }
 
+function stopOverlayEvent(event: { stopPropagation(): void }) {
+  event.stopPropagation();
+}
+
+const textAreaCaptureProps = {
+  onClickCapture: stopOverlayEvent,
+  onKeyDownCapture: stopOverlayEvent,
+  onKeyUpCapture: stopOverlayEvent,
+  onMouseDownCapture: stopOverlayEvent
+};
+
 function renderSurfaceShell(props: {
   action?: ReactNode;
   message: string;
@@ -146,6 +157,7 @@ function renderComposer(props: OverlayViewProps, lookup: PageLookupResponse) {
         placeholder="Add a short page-level comment"
         style={textAreaStyle}
         value={props.draftComment}
+        {...textAreaCaptureProps}
       />
       <button
         disabled={isSubmitDisabled}

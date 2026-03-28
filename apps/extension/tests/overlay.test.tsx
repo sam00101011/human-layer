@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { createEvent, fireEvent, render, screen, within } from "@testing-library/react";
 import type { NormalizedPageCandidate, PageLookupResponse } from "@human-layer/core";
 import { describe, expect, it, vi } from "vitest";
 
@@ -101,7 +101,7 @@ describe("OverlayView", () => {
   });
 
   it("renders the active state with the top human take", () => {
-    renderOverlay({
+    const view = renderOverlay({
       supported: true,
       state: "active",
       page: {
@@ -212,5 +212,43 @@ describe("OverlayView", () => {
     expect(onOpenProfile).toHaveBeenCalledWith("viewer");
     expect(onOpenProfile).toHaveBeenCalledWith("demo_builder");
     expect(onOpenProfile).toHaveBeenCalledWith("demo_researcher");
+  });
+
+  it("stops keyboard events from bubbling out of the composer", () => {
+    const view = renderOverlay({
+      supported: true,
+      state: "active",
+      page: {
+        id: "1",
+        pageKind: "github_repo",
+        canonicalUrl: "https://github.com/vercel/next.js",
+        canonicalKey: "https://github.com/vercel/next.js",
+        host: "github.com",
+        title: "vercel/next.js"
+      },
+      thread: {
+        verdictCounts: {
+          useful: 1,
+          misleading: 0,
+          outdated: 0,
+          scam: 0
+        },
+        topHumanTake: null,
+        recentComments: []
+      },
+      viewer: {
+        profileId: "viewer-1",
+        handle: "viewer"
+      }
+    });
+
+    const textArea = within(view.container).getByPlaceholderText("Add a short page-level comment");
+    const event = createEvent.keyDown(textArea, { key: "a" });
+    const stopPropagation = vi.fn();
+    event.stopPropagation = stopPropagation;
+
+    fireEvent(textArea, event);
+
+    expect(stopPropagation).toHaveBeenCalled();
   });
 });
