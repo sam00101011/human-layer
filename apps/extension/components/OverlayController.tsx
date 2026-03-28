@@ -31,6 +31,12 @@ type ErrorResponsePayload = {
   requestId?: string;
 };
 
+type PendingAction =
+  | { type: "submit_take" }
+  | { type: "save_page" }
+  | { type: "follow_profile"; profileId: string }
+  | null;
+
 function isErrorResponsePayload(value: unknown): value is ErrorResponsePayload {
   return typeof value === "object" && value !== null;
 }
@@ -55,6 +61,8 @@ export function OverlayController({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [saved, setSaved] = useState(false);
   const [followedProfileIds, setFollowedProfileIds] = useState<string[]>([]);
+  const [pendingAction, setPendingAction] = useState<PendingAction>(null);
+  const [authResumeCount, setAuthResumeCount] = useState(0);
   const trackedOverlayKeyRef = useRef<string | null>(null);
 
   async function refreshLookup(options?: { replaceShell?: boolean }) {
@@ -128,11 +136,52 @@ export function OverlayController({
       appOrigin: new URL(appUrl).origin,
       storage: createChromeTokenStorage(),
       onTokenStored() {
-        setStatusMessage("Verified session ready. You can post now.");
-        void refreshLookup();
+        setAuthResumeCount((count) => count + 1);
       }
     });
   }, [appUrl, currentUrl]);
+
+  useEffect(() => {
+    if (authResumeCount === 0) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function handleResumedAuth() {
+      const queuedAction = pendingAction;
+
+      setStatusMessage(
+        queuedAction ? "Verified session ready. Resuming your action..." : "Verified session ready. You can post now."
+      );
+
+      await refreshLookup();
+
+      if (cancelled || !queuedAction) {
+        return;
+      }
+
+      setPendingAction(null);
+
+      if (queuedAction.type === "submit_take") {
+        await handleSubmitTake();
+        return;
+      }
+
+      if (queuedAction.type === "save_page") {
+        await handleSave();
+        return;
+      }
+
+      await handleFollow(queuedAction.profileId);
+    }
+
+    void handleResumedAuth();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authResumeCount]);
 
   useEffect(() => {
     if (initialLookup) return;
@@ -179,8 +228,12 @@ export function OverlayController({
     return authToken;
   }
 
-  async function postJson(url: string, body: Record<string, unknown>) {
-    const authToken = await getAuthorizedToken();
+  async function postJson(
+    url: string,
+    body: Record<string, unknown>,
+    authTokenOverride?: string | null
+  ) {
+    const authToken = authTokenOverride ?? (await getAuthorizedToken());
     if (!authToken) {
       openVerify();
       return false;
@@ -213,12 +266,21 @@ export function OverlayController({
       return;
     }
 
+    const authToken = await getAuthorizedToken();
+    if (!authToken) {
+      setPendingAction({ type: "submit_take" });
+      setStatusMessage("Finish verification to post your take.");
+      openVerify();
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       if (selectedVerdict) {
         const verdictOk = await postJson(
           `${appUrl}/api/pages/${lookup.page.id}/verdict`,
-          { verdict: selectedVerdict }
+          { verdict: selectedVerdict },
+          authToken
         );
         if (!verdictOk) return;
       }
@@ -226,7 +288,8 @@ export function OverlayController({
       if (trimmedComment) {
         const commentOk = await postJson(
           `${appUrl}/api/pages/${lookup.page.id}/comments`,
-          { body: trimmedComment }
+          { body: trimmedComment },
+          authToken
         );
         if (!commentOk) return;
       }
@@ -243,9 +306,17 @@ export function OverlayController({
   async function handleSave() {
     if (!lookup?.page) return;
 
+    const authToken = await getAuthorizedToken();
+    if (!authToken) {
+      setPendingAction({ type: "save_page" });
+      setStatusMessage("Finish verification to save this page.");
+      openVerify();
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      const ok = await postJson(`${appUrl}/api/pages/${lookup.page.id}/save`, {});
+      const ok = await postJson(`${appUrl}/api/pages/${lookup.page.id}/save`, {}, authToken);
       if (!ok) return;
       setSaved(true);
       setStatusMessage("Page saved.");
@@ -255,9 +326,17 @@ export function OverlayController({
   }
 
   async function handleFollow(profileId: string) {
+    const authToken = await getAuthorizedToken();
+    if (!authToken) {
+      setPendingAction({ type: "follow_profile", profileId });
+      setStatusMessage("Finish verification to follow this profile.");
+      openVerify();
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      const ok = await postJson(`${appUrl}/api/profiles/${profileId}/follow`, {});
+      const ok = await postJson(`${appUrl}/api/profiles/${profileId}/follow`, {}, authToken);
       if (!ok) return;
       setFollowedProfileIds((current) =>
         current.includes(profileId) ? current : [...current, profileId]
