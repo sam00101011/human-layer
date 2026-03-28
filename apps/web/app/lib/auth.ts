@@ -6,6 +6,7 @@ import {
   getProfileById,
   getSessionProfileByRawToken
 } from "@human-layer/db";
+import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
 
 import { extensionMessageType } from "./auth-shared";
@@ -62,6 +63,19 @@ export async function getSessionProfileFromRequest(request: NextRequest) {
   const rawToken = request.cookies.get(sessionCookieName)?.value;
   if (!rawToken) return null;
   return getSessionProfileByRawToken(rawToken);
+}
+
+export async function getSessionProfileFromCookieStore(cookieStore: {
+  get(name: string): { value: string } | undefined;
+}) {
+  const rawToken = cookieStore.get(sessionCookieName)?.value;
+  if (!rawToken) return null;
+  return getSessionProfileByRawToken(rawToken);
+}
+
+export async function getAuthenticatedProfileFromCookies() {
+  const cookieStore = await cookies();
+  return getSessionProfileFromCookieStore(cookieStore);
 }
 
 type ExtensionTokenPayload = {
@@ -129,6 +143,20 @@ export function toViewer(profile: AuthenticatedProfile | null | undefined): ApiV
     profileId: profile.id,
     handle: profile.handle
   };
+}
+
+function getConfiguredAdminHandles(): string[] {
+  const configured = process.env.ADMIN_REVIEW_HANDLES ?? "";
+  const fallback = process.env.NODE_ENV === "development" ? "demo_builder" : "";
+  return (configured || fallback)
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export function isAdminProfile(profile: AuthenticatedProfile | null | undefined): boolean {
+  if (!profile) return false;
+  return getConfiguredAdminHandles().includes(profile.handle.toLowerCase());
 }
 
 export function getSessionCookieName(): string {

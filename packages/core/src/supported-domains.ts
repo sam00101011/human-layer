@@ -182,6 +182,82 @@ export const SUPPORTED_DOMAIN_RULES: SupportedDomainRule[] = [
     rolloutStage: "phase_0"
   },
   {
+    id: "qa-question",
+    enabled: true,
+    hosts: [
+      "stackoverflow.com",
+      "*.stackexchange.com",
+      "serverfault.com",
+      "superuser.com",
+      "askubuntu.com",
+      "stackapps.com",
+      "mathoverflow.net"
+    ],
+    pageKind: "qa_question",
+    matchStrategy: "path_prefix",
+    normalizer: "qaQuestion",
+    rolloutStage: "phase_0"
+  },
+  {
+    id: "research-page",
+    enabled: true,
+    hosts: [
+      "arxiv.org",
+      "paperswithcode.com",
+      "openreview.net",
+      "www.semanticscholar.org",
+      "semanticscholar.org"
+    ],
+    pageKind: "research_page",
+    matchStrategy: "path_prefix",
+    normalizer: "researchPage",
+    rolloutStage: "phase_0"
+  },
+  {
+    id: "product-page",
+    enabled: true,
+    hosts: [
+      "www.crunchbase.com",
+      "crunchbase.com",
+      "www.indiehackers.com",
+      "indiehackers.com",
+      "betalist.com",
+      "appsumo.com"
+    ],
+    pageKind: "product_page",
+    matchStrategy: "path_prefix",
+    normalizer: "productPage",
+    rolloutStage: "phase_0"
+  },
+  {
+    id: "marketplace-item",
+    enabled: true,
+    hosts: [
+      "marketplace.visualstudio.com",
+      "visualstudiomarketplace.com",
+      "plugins.jetbrains.com",
+      "marketplace.atlassian.com",
+      "addons.mozilla.org",
+      "marketplace.cursor.com",
+      "raycast.com",
+      "www.raycast.com",
+      "obsidian.md"
+    ],
+    pageKind: "marketplace_item",
+    matchStrategy: "path_prefix",
+    normalizer: "marketplaceItem",
+    rolloutStage: "phase_0"
+  },
+  {
+    id: "repository-page",
+    enabled: true,
+    hosts: ["bitbucket.org", "git.sr.ht", "launchpad.net", "bugs.launchpad.net"],
+    pageKind: "repository_page",
+    matchStrategy: "path_prefix",
+    normalizer: "repositoryPage",
+    rolloutStage: "phase_0"
+  },
+  {
     id: "chrome-web-store-item",
     enabled: true,
     hosts: ["chromewebstore.google.com"],
@@ -241,7 +317,11 @@ export const SUPPORTED_DOMAIN_RULES: SupportedDomainRule[] = [
       "crates.io",
       "pkg.go.dev",
       "hackage.haskell.org",
-      "metacpan.org"
+      "metacpan.org",
+      "homebrewformulae.brew.sh",
+      "jsr.io",
+      "pub.dev",
+      "hex.pm"
     ],
     pageKind: "registry_package",
     matchStrategy: "path_prefix",
@@ -260,7 +340,17 @@ export const SUPPORTED_DOMAIN_RULES: SupportedDomainRule[] = [
   {
     id: "model-page",
     enabled: true,
-    hosts: ["replicate.com"],
+    hosts: [
+      "replicate.com",
+      "openrouter.ai",
+      "ollama.com",
+      "modal.com",
+      "fal.ai",
+      "together.ai",
+      "weights.gg",
+      "www.kaggle.com",
+      "kaggle.com"
+    ],
     pageKind: "model_page",
     matchStrategy: "path_prefix",
     normalizer: "modelPage",
@@ -269,7 +359,18 @@ export const SUPPORTED_DOMAIN_RULES: SupportedDomainRule[] = [
   {
     id: "showcase-page",
     enabled: true,
-    hosts: ["v0.dev", "lovable.dev", "bolt.new"],
+    hosts: [
+      "v0.dev",
+      "lovable.dev",
+      "bolt.new",
+      "dribbble.com",
+      "www.dribbble.com",
+      "behance.net",
+      "www.behance.net",
+      "mobbin.com",
+      "godly.website",
+      "land-book.com"
+    ],
     pageKind: "showcase_page",
     matchStrategy: "path_prefix",
     normalizer: "showcasePage",
@@ -339,7 +440,13 @@ export const SUPPORTED_DOMAIN_RULES: SupportedDomainRule[] = [
       "*.atlassian.net",
       "docs.google.com",
       "sourcegraph.com",
-      "modal.com"
+      "modal.com",
+      "sourcehut.org",
+      "hexdocs.pm",
+      "readthedocs.io",
+      "*.readthedocs.io",
+      "helm.sh",
+      "docs.rs"
     ],
     pageKind: "docs_page",
     matchStrategy: "path_prefix",
@@ -356,6 +463,8 @@ export const SUPPORTED_DOMAIN_RULES: SupportedDomainRule[] = [
       "hashnode.com",
       "*.hashnode.dev",
       "*.substack.com",
+      "www.indiehackers.com",
+      "indiehackers.com",
       "linear.app",
       "mirror.xyz",
       "hackernoon.com",

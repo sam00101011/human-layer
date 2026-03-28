@@ -5,6 +5,8 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { Source_Sans_3, Source_Serif_4 } from 'next/font/google';
 
+import { getAuthenticatedProfileFromCookies, isAdminProfile } from './lib/auth';
+
 const sans = Source_Sans_3({ subsets: ['latin'], variable: '--font-sans' });
 const serif = Source_Serif_4({ subsets: ['latin'], variable: '--font-serif', weight: ['400', '600', '700'] });
 
@@ -13,7 +15,10 @@ export const metadata: Metadata = {
   description: 'Verified-human context layer for the web',
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  const viewer = await getAuthenticatedProfileFromCookies();
+  const canReview = isAdminProfile(viewer);
+
   return (
     <html lang="en" className={`${sans.variable} ${serif.variable}`}>
       <body>
@@ -26,6 +31,14 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <Link className="top-nav-link" href="/verify">
                 Verify
               </Link>
+              <Link className="top-nav-link" href="/bookmarks">
+                Bookmarks
+              </Link>
+              {canReview ? (
+                <Link className="top-nav-link" href="/moderation">
+                  Moderation
+                </Link>
+              ) : null}
               <Link className="top-nav-link" href="/privacy">
                 Privacy
               </Link>
@@ -43,9 +56,17 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <div className="site-footer-inner">
             <span className="site-footer-brand">Human Layer beta</span>
             <div className="site-footer-links">
+              <Link className="site-footer-link" href="/bookmarks">
+                Bookmarks
+              </Link>
               <Link className="site-footer-link" href="/privacy">
                 Privacy
               </Link>
+              {canReview ? (
+                <Link className="site-footer-link" href="/moderation">
+                  Moderation
+                </Link>
+              ) : null}
               <Link className="site-footer-link" href="/terms">
                 Terms
               </Link>

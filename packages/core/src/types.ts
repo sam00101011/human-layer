@@ -19,6 +19,11 @@ export const PAGE_KINDS = [
   "pypi_package",
   "reddit_thread",
   "youtube_video",
+  "qa_question",
+  "research_page",
+  "product_page",
+  "marketplace_item",
+  "repository_page",
   "chrome_web_store_item",
   "figma_community_resource",
   "issue_page",
@@ -60,6 +65,11 @@ export const PHASE_0_PAGE_KINDS = [
   "pypi_package",
   "reddit_thread",
   "youtube_video",
+  "qa_question",
+  "research_page",
+  "product_page",
+  "marketplace_item",
+  "repository_page",
   "chrome_web_store_item",
   "figma_community_resource",
   "issue_page",
@@ -136,6 +146,11 @@ export type NormalizerName =
   | "pypiPackage"
   | "redditThread"
   | "youtubeVideo"
+  | "qaQuestion"
+  | "researchPage"
+  | "productPage"
+  | "marketplaceItem"
+  | "repositoryPage"
   | "chromeWebStoreItem"
   | "figmaCommunityResource"
   | "issuePage"
@@ -228,6 +243,7 @@ export type PageLookupResponse = {
   state: PageLookupState;
   page: PageSummary | null;
   thread: ThreadSnapshot | null;
+  savedByViewer?: boolean;
   viewer?: ViewerSummary | null;
 };
 

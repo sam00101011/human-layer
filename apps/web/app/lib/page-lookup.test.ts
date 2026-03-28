@@ -121,4 +121,15 @@ describe("lookupPageByUrl", () => {
     expect(response.state).toBe("empty");
     expect(response.page?.pageKind).toBe("product_hunt_product");
   });
+
+  it("returns empty for newly supported knowledge pages", async () => {
+    const response = await lookupPageByUrl(
+      "https://stackoverflow.com/questions/12345678/how-to-ship-it",
+      createStore()
+    );
+
+    expect(response.supported).toBe(true);
+    expect(response.state).toBe("empty");
+    expect(response.page?.pageKind).toBe("qa_question");
+  });
 });

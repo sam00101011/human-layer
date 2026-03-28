@@ -18,6 +18,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { db } from "./client";
 import {
   commentHelpfulVotes,
+  commentReports,
   comments,
   follows,
   pageAliases,
@@ -45,6 +46,33 @@ export type StoredProfile = {
   interestTags: InterestTag[];
   nullifierHash: string | null;
   createdAt: string;
+};
+
+export type BookmarkedPage = PageSummary & {
+  savedAt: string;
+};
+
+export type ModerationQueueItem = {
+  reportId: string;
+  status: string;
+  reasonCode: string;
+  details: string | null;
+  createdAt: string;
+  reviewedAt: string | null;
+  commentId: string;
+  commentBody: string;
+  commentCreatedAt: string;
+  commentHidden: boolean;
+  commentReasonCode: string | null;
+  authorProfileId: string;
+  authorHandle: string;
+  reporterProfileId: string;
+  reporterHandle: string;
+  pageId: string;
+  pageKind: PageSummary["pageKind"];
+  pageTitle: string;
+  pageHost: string;
+  pageCanonicalUrl: string;
 };
 
 export class HandleTakenError extends Error {
@@ -538,7 +566,8 @@ async function getSavedPages(profileId: string): Promise<PageSummary[]> {
       canonicalUrl: pages.canonicalUrl,
       canonicalKey: pages.canonicalKey,
       host: pages.host,
-      title: pages.title
+      title: pages.title,
+      savedAt: saves.createdAt
     })
     .from(saves)
     .innerJoin(pages, eq(pages.id, saves.pageId))
@@ -553,6 +582,37 @@ async function getSavedPages(profileId: string): Promise<PageSummary[]> {
     canonicalKey: row.canonicalKey,
     host: row.host,
     title: row.title
+  }));
+}
+
+export async function getBookmarkedPagesForProfile(
+  profileId: string,
+  limit = 50
+): Promise<BookmarkedPage[]> {
+  const rows = await db
+    .select({
+      id: pages.id,
+      pageKind: pages.pageKind,
+      canonicalUrl: pages.canonicalUrl,
+      canonicalKey: pages.canonicalKey,
+      host: pages.host,
+      title: pages.title,
+      savedAt: saves.createdAt
+    })
+    .from(saves)
+    .innerJoin(pages, eq(pages.id, saves.pageId))
+    .where(eq(saves.profileId, profileId))
+    .orderBy(desc(saves.createdAt))
+    .limit(limit);
+
+  return rows.map((row) => ({
+    id: row.id,
+    pageKind: row.pageKind as PageSummary["pageKind"],
+    canonicalUrl: row.canonicalUrl,
+    canonicalKey: row.canonicalKey,
+    host: row.host,
+    title: row.title,
+    savedAt: row.savedAt.toISOString()
   }));
 }
 
@@ -735,6 +795,41 @@ export async function createCommentForPage(params: {
   return inserted;
 }
 
+export async function findCommentById(commentId: string): Promise<{
+  id: string;
+  pageId: string;
+  profileId: string;
+  body: string;
+  hidden: boolean;
+  reasonCode: string | null;
+} | null> {
+  const row = await db.query.comments.findFirst({
+    where: eq(comments.id, commentId)
+  });
+
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    pageId: row.pageId,
+    profileId: row.profileId,
+    body: row.body,
+    hidden: row.hidden,
+    reasonCode: row.reasonCode
+  };
+}
+
+export async function hasProfileSavedPage(params: {
+  pageId: string;
+  profileId: string;
+}): Promise<boolean> {
+  const row = await db.query.saves.findFirst({
+    where: and(eq(saves.pageId, params.pageId), eq(saves.profileId, params.profileId))
+  });
+
+  return Boolean(row);
+}
+
 export async function savePageForProfile(params: {
   pageId: string;
   profileId: string;
@@ -746,6 +841,141 @@ export async function savePageForProfile(params: {
       profileId: params.profileId
     })
     .onConflictDoNothing();
+}
+
+export async function createCommentReport(params: {
+  commentId: string;
+  reporterProfileId: string;
+  reasonCode: string;
+  details?: string | null;
+}): Promise<void> {
+  await db
+    .insert(commentReports)
+    .values({
+      commentId: params.commentId,
+      reporterProfileId: params.reporterProfileId,
+      reasonCode: params.reasonCode,
+      details: params.details ?? null,
+      status: "open",
+      reviewedAt: null,
+      reviewedByProfileId: null
+    })
+    .onConflictDoUpdate({
+      target: [commentReports.commentId, commentReports.reporterProfileId],
+      set: {
+        reasonCode: params.reasonCode,
+        details: params.details ?? null,
+        status: "open",
+        reviewedAt: null,
+        reviewedByProfileId: null
+      }
+    });
+}
+
+export async function getModerationQueue(limit = 100): Promise<ModerationQueueItem[]> {
+  const rows = await db
+    .select({
+      reportId: commentReports.id,
+      status: commentReports.status,
+      reasonCode: commentReports.reasonCode,
+      details: commentReports.details,
+      createdAt: commentReports.createdAt,
+      reviewedAt: commentReports.reviewedAt,
+      commentId: comments.id,
+      commentBody: comments.body,
+      commentCreatedAt: comments.createdAt,
+      commentHidden: comments.hidden,
+      commentReasonCode: comments.reasonCode,
+      authorProfileId: profiles.id,
+      authorHandle: profiles.handle,
+      reporterProfileId: commentReports.reporterProfileId,
+      pageId: pages.id,
+      pageKind: pages.pageKind,
+      pageTitle: pages.title,
+      pageHost: pages.host,
+      pageCanonicalUrl: pages.canonicalUrl
+    })
+    .from(commentReports)
+    .innerJoin(comments, eq(comments.id, commentReports.commentId))
+    .innerJoin(profiles, eq(profiles.id, comments.profileId))
+    .innerJoin(pages, eq(pages.id, comments.pageId))
+    .orderBy(desc(commentReports.createdAt))
+    .limit(limit);
+
+  const reporterIds = [...new Set(rows.map((row) => row.reporterProfileId))];
+  const reporterRows =
+    reporterIds.length === 0
+      ? []
+      : await db
+          .select({
+            id: profiles.id,
+            handle: profiles.handle
+          })
+          .from(profiles)
+          .where(inArray(profiles.id, reporterIds));
+
+  const reporterHandleMap = new Map(reporterRows.map((row) => [row.id, row.handle]));
+
+  return rows.map((row) => ({
+    reportId: row.reportId,
+    status: row.status,
+    reasonCode: row.reasonCode,
+    details: row.details,
+    createdAt: row.createdAt.toISOString(),
+    reviewedAt: row.reviewedAt ? row.reviewedAt.toISOString() : null,
+    commentId: row.commentId,
+    commentBody: row.commentBody,
+    commentCreatedAt: row.commentCreatedAt.toISOString(),
+    commentHidden: row.commentHidden,
+    commentReasonCode: row.commentReasonCode,
+    authorProfileId: row.authorProfileId,
+    authorHandle: row.authorHandle,
+    reporterProfileId: row.reporterProfileId,
+    reporterHandle: reporterHandleMap.get(row.reporterProfileId) ?? "unknown",
+    pageId: row.pageId,
+    pageKind: row.pageKind as PageSummary["pageKind"],
+    pageTitle: row.pageTitle,
+    pageHost: row.pageHost,
+    pageCanonicalUrl: row.pageCanonicalUrl
+  }));
+}
+
+export async function reviewCommentReports(params: {
+  commentId: string;
+  adminProfileId: string;
+  action: "hide" | "dismiss" | "restore";
+  reasonCode?: string | null;
+}): Promise<void> {
+  await db.transaction(async (tx) => {
+    if (params.action === "hide") {
+      await tx
+        .update(comments)
+        .set({
+          hidden: true,
+          reasonCode: params.reasonCode ?? "reported_abuse"
+        })
+        .where(eq(comments.id, params.commentId));
+    }
+
+    if (params.action === "restore") {
+      await tx
+        .update(comments)
+        .set({
+          hidden: false,
+          reasonCode: null
+        })
+        .where(eq(comments.id, params.commentId));
+    }
+
+    await tx
+      .update(commentReports)
+      .set({
+        status: params.action === "hide" ? "hidden" : params.action === "restore" ? "restored" : "dismissed",
+        reviewedAt: new Date(),
+        reviewedByProfileId: params.adminProfileId
+      })
+      .where(eq(commentReports.commentId, params.commentId));
+  });
 }
 
 export async function followProfile(params: {

@@ -75,6 +75,29 @@ const devReservedSegments = new Set(["about", "latest", "top", "tags", "pod", "v
 const mediumReservedSegments = new Set(["about", "m", "tag", "topics", "membership", "me", "search"]);
 const showcaseReservedSegments = new Set(["docs", "pricing", "blog", "privacy", "terms", "api"]);
 const lumaReservedSegments = new Set(["login", "discover", "host", "pricing", "privacy", "terms"]);
+const stackExchangeHosts = new Set([
+  "stackoverflow.com",
+  "serverfault.com",
+  "superuser.com",
+  "askubuntu.com",
+  "stackapps.com",
+  "mathoverflow.net"
+]);
+const sourcehutReservedSegments = new Set(["about", "blog", "privacy", "security", "support", "plans"]);
+const designReservedSegments = new Set([
+  "about",
+  "blog",
+  "browse",
+  "collections",
+  "community",
+  "discover",
+  "jobs",
+  "login",
+  "pricing",
+  "search",
+  "signup",
+  "tags"
+]);
 
 function isMediumHost(host: string): boolean {
   return host === "medium.com" || host.endsWith(".medium.com");
@@ -118,6 +141,22 @@ function isNotionHost(host: string): boolean {
 
 function isWikipediaHost(host: string): boolean {
   return host.endsWith(".wikipedia.org");
+}
+
+function isStackExchangeHost(host: string): boolean {
+  return stackExchangeHosts.has(host) || host.endsWith(".stackexchange.com");
+}
+
+function isReadTheDocsHost(host: string): boolean {
+  return host === "readthedocs.io" || host.endsWith(".readthedocs.io");
+}
+
+function isVsMarketplaceHost(host: string): boolean {
+  return host === "marketplace.visualstudio.com" || host === "visualstudiomarketplace.com";
+}
+
+function isLaunchpadHost(host: string): boolean {
+  return host === "launchpad.net" || host === "bugs.launchpad.net";
 }
 
 function normalizeGitHub(url: URL): NormalizedPageCandidate | null {
@@ -380,6 +419,187 @@ function normalizeYouTube(url: URL): NormalizedPageCandidate | null {
   return null;
 }
 
+function normalizeQaQuestion(url: URL): NormalizedPageCandidate | null {
+  const host = normalizeHost(url);
+  const segments = splitPath(url);
+  if (!isStackExchangeHost(host) || segments.length < 2) return null;
+
+  if (segments[0] === "questions" && /^\d+$/.test(segments[1] ?? "")) {
+    return buildExternalCandidate("qa_question", host, `/questions/${segments[1]}`, `Question ${segments[1]}`);
+  }
+
+  if (segments[0] === "q" && /^\d+$/.test(segments[1] ?? "")) {
+    return buildExternalCandidate("qa_question", host, `/questions/${segments[1]}`, `Question ${segments[1]}`);
+  }
+
+  return null;
+}
+
+function normalizeResearchPage(url: URL): NormalizedPageCandidate | null {
+  const host = normalizeHost(url);
+  const segments = splitPath(url);
+  if (segments.length === 0) return null;
+
+  if (host === "arxiv.org" && segments[0] === "abs" && segments[1]) {
+    return buildExternalCandidate("research_page", host, `/abs/${segments[1]}`, `arXiv ${segments[1]}`);
+  }
+
+  if (host === "paperswithcode.com" && (segments[0] === "paper" || segments[0] === "dataset") && segments[1]) {
+    return buildExternalCandidate("research_page", host, `/${segments[0]}/${segments[1]}`, slugToTitle(segments[1]));
+  }
+
+  if (host === "openreview.net") {
+    const reviewId = url.searchParams.get("id");
+    if (reviewId && (segments[0] === "forum" || segments[0] === "pdf" || segments[0] === "attachment")) {
+      return buildCandidate("research_page", `https://openreview.net/forum?id=${reviewId}`, host, `OpenReview ${reviewId}`);
+    }
+  }
+
+  if ((host === "semanticscholar.org" || host === "www.semanticscholar.org") && segments[0] === "paper" && segments[1]) {
+    return buildExternalCandidate(
+      "research_page",
+      "www.semanticscholar.org",
+      url.pathname,
+      slugToTitle(segments[segments.length - 1] ?? segments[1])
+    );
+  }
+
+  return null;
+}
+
+function normalizeProductPage(url: URL): NormalizedPageCandidate | null {
+  const host = normalizeHost(url);
+  const segments = splitPath(url);
+  if (segments.length < 2) return null;
+
+  if ((host === "crunchbase.com" || host === "www.crunchbase.com") && ["organization", "product", "company"].includes(segments[0] ?? "")) {
+    return buildExternalCandidate("product_page", "www.crunchbase.com", `/${segments[0]}/${segments[1]}`, slugToTitle(segments[1]));
+  }
+
+  if ((host === "indiehackers.com" || host === "www.indiehackers.com") && ["product", "products"].includes(segments[0] ?? "")) {
+    return buildExternalCandidate("product_page", "www.indiehackers.com", `/${segments[0]}/${segments[1]}`, slugToTitle(segments[1]));
+  }
+
+  if (host === "betalist.com" && ["startup", "startups"].includes(segments[0] ?? "")) {
+    return buildExternalCandidate("product_page", host, `/${segments[0]}/${segments[1]}`, slugToTitle(segments[1]));
+  }
+
+  if (host === "appsumo.com") {
+    if (segments[0] === "products" && segments[1] === "marketplace" && segments[2]) {
+      return buildExternalCandidate("product_page", host, `/products/marketplace/${segments[2]}`, slugToTitle(segments[2]));
+    }
+
+    if ((segments[0] === "products" || segments[0] === "software") && segments[1]) {
+      return buildExternalCandidate("product_page", host, `/${segments[0]}/${segments[1]}`, slugToTitle(segments[1]));
+    }
+  }
+
+  return null;
+}
+
+function normalizeMarketplaceItem(url: URL): NormalizedPageCandidate | null {
+  const host = normalizeHost(url);
+  const segments = splitPath(url);
+
+  if (isVsMarketplaceHost(host) && segments[0] === "items") {
+    const itemName = url.searchParams.get("itemName");
+    if (!itemName) return null;
+    return buildCandidate(
+      "marketplace_item",
+      `https://marketplace.visualstudio.com/items?itemName=${itemName}`,
+      "marketplace.visualstudio.com",
+      itemName
+    );
+  }
+
+  if (host === "plugins.jetbrains.com" && segments[0] === "plugin" && segments[1]) {
+    return buildExternalCandidate("marketplace_item", host, `/plugin/${segments[1]}`, slugToTitle(segments[1]));
+  }
+
+  if (host === "marketplace.atlassian.com" && segments[0] === "apps" && segments[1]) {
+    return buildExternalCandidate("marketplace_item", host, `/apps/${segments[1]}`, segments[2] ? slugToTitle(segments[2]) : `Atlassian app ${segments[1]}`);
+  }
+
+  if (host === "addons.mozilla.org") {
+    const addonIndex = segments.indexOf("addon");
+    const addonSlug = addonIndex >= 0 ? segments[addonIndex + 1] : null;
+    if (!addonSlug) return null;
+    return buildCandidate("marketplace_item", `https://addons.mozilla.org/addon/${addonSlug}`, host, slugToTitle(addonSlug));
+  }
+
+  if (host === "marketplace.cursor.com" && segments[0] === "items") {
+    const itemName = url.searchParams.get("itemName");
+    if (!itemName) return null;
+    return buildCandidate(
+      "marketplace_item",
+      `https://marketplace.cursor.com/items?itemName=${itemName}`,
+      host,
+      itemName
+    );
+  }
+
+  if ((host === "raycast.com" || host === "www.raycast.com") && segments[0] === "extensions" && segments[1]) {
+    return buildExternalCandidate("marketplace_item", "raycast.com", url.pathname, slugToTitle(segments[segments.length - 1]));
+  }
+
+  if (host === "obsidian.md" && segments[0] === "plugins") {
+    const pluginId = url.searchParams.get("id");
+    if (!pluginId) return null;
+    return buildCandidate("marketplace_item", `https://obsidian.md/plugins?id=${pluginId}`, host, slugToTitle(pluginId));
+  }
+
+  return null;
+}
+
+function normalizeRepositoryPage(url: URL): NormalizedPageCandidate | null {
+  const host = normalizeHost(url);
+  const segments = splitPath(url);
+  if (segments.length === 0) return null;
+
+  if (host === "bitbucket.org" && segments[0] && segments[1]) {
+    if (segments[2] === "issues" && /^\d+$/.test(segments[3] ?? "")) {
+      return buildExternalCandidate(
+        "issue_page",
+        host,
+        `/${segments[0]}/${segments[1]}/issues/${segments[3]}`,
+        `${segments[0]}/${segments[1]} issue #${segments[3]}`
+      );
+    }
+
+    if (segments[2] === "pull-requests" && /^\d+$/.test(segments[3] ?? "")) {
+      return buildExternalCandidate(
+        "issue_page",
+        host,
+        `/${segments[0]}/${segments[1]}/pull-requests/${segments[3]}`,
+        `${segments[0]}/${segments[1]} PR #${segments[3]}`
+      );
+    }
+
+    if (segments.length === 2) {
+      return buildExternalCandidate("repository_page", host, `/${segments[0]}/${segments[1]}`, `${segments[0]}/${segments[1]}`);
+    }
+  }
+
+  if (host === "git.sr.ht" && segments[0]?.startsWith("~") && segments[1]) {
+    return buildExternalCandidate("repository_page", host, `/${segments[0]}/${segments[1]}`, `${segments[0]}/${segments[1]}`);
+  }
+
+  if (isLaunchpadHost(host)) {
+    const bugIndex = segments.indexOf("+bug");
+    const bugId = bugIndex >= 0 ? segments[bugIndex + 1] : null;
+    if (bugId && /^\d+$/.test(bugId)) {
+      const project = segments[0] && segments[0] !== "+bug" ? segments[0] : "launchpad";
+      return buildExternalCandidate("issue_page", host, `/${project}/+bug/${bugId}`, `${project} bug #${bugId}`);
+    }
+
+    if (host === "launchpad.net" && segments.length === 1 && segments[0] && !segments[0].startsWith("+")) {
+      return buildExternalCandidate("repository_page", host, `/${segments[0]}`, segments[0]);
+    }
+  }
+
+  return null;
+}
+
 function normalizeChromeWebStore(url: URL): NormalizedPageCandidate | null {
   const host = normalizeHost(url);
   const segments = splitPath(url);
@@ -440,6 +660,22 @@ function normalizeDocsPage(url: URL): NormalizedPageCandidate | null {
   }
 
   if (host === "modal.com" && segments[0] === "docs") {
+    return buildExternalCandidate("docs_page", host, url.pathname, slugToTitle(segments[segments.length - 1]));
+  }
+
+  if (host === "helm.sh" && segments[0] === "docs") {
+    return buildExternalCandidate("docs_page", host, url.pathname, slugToTitle(segments[segments.length - 1]));
+  }
+
+  if (host === "docs.rs") {
+    return buildExternalCandidate("docs_page", host, url.pathname, slugToTitle(segments[segments.length - 1]));
+  }
+
+  if (host === "hexdocs.pm" || isReadTheDocsHost(host)) {
+    return buildExternalCandidate("docs_page", host, url.pathname, slugToTitle(segments[segments.length - 1]));
+  }
+
+  if (host === "sourcehut.org" && !sourcehutReservedSegments.has(segments[0] ?? "")) {
     return buildExternalCandidate("docs_page", host, url.pathname, slugToTitle(segments[segments.length - 1]));
   }
 
@@ -554,6 +790,28 @@ function normalizeRegistryPackage(url: URL): NormalizedPageCandidate | null {
     return buildExternalCandidate("registry_package", host, `/${segments[0]}/${segments[1]}`, segments[1]);
   }
 
+  if (host === "homebrewformulae.brew.sh" && ["formula", "formula-linux", "cask"].includes(segments[0] ?? "") && segments[1]) {
+    return buildExternalCandidate("registry_package", host, `/${segments[0]}/${segments[1]}`, segments[1]);
+  }
+
+  if (host === "jsr.io") {
+    if (segments[0]?.startsWith("@") && segments[1]) {
+      return buildExternalCandidate("registry_package", host, `/${segments[0]}/${segments[1]}`, `${segments[0]}/${segments[1]}`);
+    }
+
+    if (segments[0]) {
+      return buildExternalCandidate("registry_package", host, `/${segments[0]}`, segments[0]);
+    }
+  }
+
+  if (host === "pub.dev" && segments[0] === "packages" && segments[1]) {
+    return buildExternalCandidate("registry_package", host, `/packages/${segments[1]}`, segments[1]);
+  }
+
+  if (host === "hex.pm" && segments[0] === "packages" && segments[1]) {
+    return buildExternalCandidate("registry_package", host, `/packages/${segments[1]}`, segments[1]);
+  }
+
   return null;
 }
 
@@ -574,9 +832,35 @@ function normalizePackageComparisonPage(url: URL): NormalizedPageCandidate | nul
 function normalizeModelPage(url: URL): NormalizedPageCandidate | null {
   const host = normalizeHost(url);
   const segments = splitPath(url);
-  if (host !== "replicate.com" || segments.length !== 2 || showcaseReservedSegments.has(segments[0])) return null;
+  if (segments.length === 0) return null;
 
-  return buildExternalCandidate("model_page", host, `/${segments[0]}/${segments[1]}`, `${segments[0]}/${segments[1]}`);
+  if (host === "replicate.com" && segments.length === 2 && !showcaseReservedSegments.has(segments[0])) {
+    return buildExternalCandidate("model_page", host, `/${segments[0]}/${segments[1]}`, `${segments[0]}/${segments[1]}`);
+  }
+
+  if (host === "openrouter.ai" && segments[0] === "models" && segments[1]) {
+    const modelPath = segments[2] ? `/models/${segments[1]}/${segments[2]}` : `/models/${segments[1]}`;
+    const title = segments[2] ? `${segments[1]}/${segments[2]}` : segments[1];
+    return buildExternalCandidate("model_page", host, modelPath, title);
+  }
+
+  if (host === "ollama.com" && segments[0] === "library" && segments[1]) {
+    return buildExternalCandidate("model_page", host, `/library/${segments[1]}`, segments[1]);
+  }
+
+  if (host === "modal.com" && segments[0] === "gallery" && segments[1]) {
+    return buildExternalCandidate("model_page", host, `/gallery/${segments[1]}`, slugToTitle(segments[1]));
+  }
+
+  if ((host === "fal.ai" || host === "together.ai" || host === "weights.gg") && segments[0] === "models" && segments[1]) {
+    return buildExternalCandidate("model_page", host, url.pathname, slugToTitle(segments[segments.length - 1]));
+  }
+
+  if ((host === "www.kaggle.com" || host === "kaggle.com") && segments[0] === "models" && segments[1] && segments[2]) {
+    return buildExternalCandidate("model_page", "www.kaggle.com", `/models/${segments[1]}/${segments[2]}`, `${segments[1]}/${segments[2]}`);
+  }
+
+  return null;
 }
 
 function normalizeShowcasePage(url: URL): NormalizedPageCandidate | null {
@@ -593,6 +877,22 @@ function normalizeShowcasePage(url: URL): NormalizedPageCandidate | null {
   }
 
   if (host === "bolt.new" && !showcaseReservedSegments.has(segments[0])) {
+    return buildExternalCandidate("showcase_page", host, url.pathname, slugToTitle(segments[segments.length - 1]));
+  }
+
+  if ((host === "dribbble.com" || host === "www.dribbble.com") && segments[0] === "shots" && segments[1]) {
+    return buildExternalCandidate("showcase_page", "dribbble.com", `/shots/${segments[1]}`, `Dribbble shot ${segments[1]}`);
+  }
+
+  if ((host === "behance.net" || host === "www.behance.net") && segments[0] === "gallery" && segments[1]) {
+    return buildExternalCandidate("showcase_page", "www.behance.net", `/gallery/${segments[1]}`, `Behance gallery ${segments[1]}`);
+  }
+
+  if (host === "mobbin.com" && segments.length >= 2 && !designReservedSegments.has(segments[0] ?? "")) {
+    return buildExternalCandidate("showcase_page", host, url.pathname, slugToTitle(segments[segments.length - 1]));
+  }
+
+  if ((host === "godly.website" || host === "land-book.com") && !designReservedSegments.has(segments[0] ?? "")) {
     return buildExternalCandidate("showcase_page", host, url.pathname, slugToTitle(segments[segments.length - 1]));
   }
 
@@ -691,6 +991,10 @@ function normalizeBlogPost(url: URL): NormalizedPageCandidate | null {
   const segments = splitPath(url);
   if (segments.length === 0) return null;
 
+  if ((host === "indiehackers.com" || host === "www.indiehackers.com") && segments[0] === "post" && segments[1]) {
+    return buildExternalCandidate("blog_post", "www.indiehackers.com", `/post/${segments[1]}`, slugToTitle(segments[1]));
+  }
+
   if (host === "dev.to") {
     if (segments.length < 2 || devReservedSegments.has(segments[0])) return null;
     return buildExternalCandidate("blog_post", host, `/${segments[0]}/${segments[1]}`, slugToTitle(segments[1]));
@@ -776,6 +1080,41 @@ export function normalizeUrl(rawUrl: string): NormalizedPageCandidate | null {
   if (host === "pypi.org") return normalizePypi(url);
   if (host === "www.reddit.com" || host === "reddit.com" || host === "old.reddit.com") return normalizeReddit(url);
   if (host === "www.youtube.com" || host === "youtube.com" || host === "youtu.be") return normalizeYouTube(url);
+  if (isStackExchangeHost(host)) return normalizeQaQuestion(url);
+  if (
+    host === "arxiv.org" ||
+    host === "paperswithcode.com" ||
+    host === "openreview.net" ||
+    host === "semanticscholar.org" ||
+    host === "www.semanticscholar.org"
+  ) {
+    return normalizeResearchPage(url);
+  }
+  if (
+    host === "crunchbase.com" ||
+    host === "www.crunchbase.com" ||
+    host === "indiehackers.com" ||
+    host === "www.indiehackers.com" ||
+    host === "betalist.com" ||
+    host === "appsumo.com"
+  ) {
+    return normalizeProductPage(url) ?? normalizeBlogPost(url);
+  }
+  if (
+    isVsMarketplaceHost(host) ||
+    host === "plugins.jetbrains.com" ||
+    host === "marketplace.atlassian.com" ||
+    host === "addons.mozilla.org" ||
+    host === "marketplace.cursor.com" ||
+    host === "raycast.com" ||
+    host === "www.raycast.com" ||
+    host === "obsidian.md"
+  ) {
+    return normalizeMarketplaceItem(url);
+  }
+  if (host === "bitbucket.org" || host === "git.sr.ht" || isLaunchpadHost(host)) {
+    return normalizeRepositoryPage(url);
+  }
   if (host === "chromewebstore.google.com") return normalizeChromeWebStore(url);
   if (host === "www.figma.com" || host === "figma.com") return normalizeFigmaCommunity(url);
   if (host === "linear.app" || isAtlassianHost(host)) {
@@ -795,14 +1134,43 @@ export function normalizeUrl(rawUrl: string): NormalizedPageCandidate | null {
     host === "crates.io" ||
     host === "pkg.go.dev" ||
     host === "hackage.haskell.org" ||
-    host === "metacpan.org"
+    host === "metacpan.org" ||
+    host === "homebrewformulae.brew.sh" ||
+    host === "jsr.io" ||
+    host === "pub.dev" ||
+    host === "hex.pm"
   ) {
     return normalizeRegistryPackage(url);
   }
   if (host === "npmtrends.com") return normalizePackageComparisonPage(url);
-  if (host === "replicate.com") return normalizeModelPage(url);
-  if (host === "v0.dev" || host === "lovable.dev" || host === "bolt.new") return normalizeShowcasePage(url);
-  if (host === "www.kaggle.com" || host === "kaggle.com") return normalizeKaggleResource(url);
+  if (
+    host === "replicate.com" ||
+    host === "openrouter.ai" ||
+    host === "ollama.com" ||
+    host === "modal.com" ||
+    host === "fal.ai" ||
+    host === "together.ai" ||
+    host === "weights.gg"
+  ) {
+    return normalizeModelPage(url) ?? normalizeDocsPage(url);
+  }
+  if (
+    host === "v0.dev" ||
+    host === "lovable.dev" ||
+    host === "bolt.new" ||
+    host === "dribbble.com" ||
+    host === "www.dribbble.com" ||
+    host === "behance.net" ||
+    host === "www.behance.net" ||
+    host === "mobbin.com" ||
+    host === "godly.website" ||
+    host === "land-book.com"
+  ) {
+    return normalizeShowcasePage(url);
+  }
+  if (host === "www.kaggle.com" || host === "kaggle.com") {
+    return normalizeModelPage(url) ?? normalizeKaggleResource(url);
+  }
   if (
     host === "observablehq.com" ||
     host === "colab.research.google.com" ||
@@ -821,11 +1189,23 @@ export function normalizeUrl(rawUrl: string): NormalizedPageCandidate | null {
     host.endsWith(".docusaurus.io") ||
     host === "docs.google.com" ||
     host === "sourcegraph.com" ||
-    host === "modal.com"
+    host === "modal.com" ||
+    host === "sourcehut.org" ||
+    host === "hexdocs.pm" ||
+    isReadTheDocsHost(host) ||
+    host === "helm.sh" ||
+    host === "docs.rs"
   ) {
     return normalizeDocsPage(url);
   }
-  if (host === "dev.to" || host === "hashnode.com" || host === "substack.com" || host.endsWith(".substack.com")) {
+  if (
+    host === "dev.to" ||
+    host === "hashnode.com" ||
+    host === "substack.com" ||
+    host.endsWith(".substack.com") ||
+    host === "indiehackers.com" ||
+    host === "www.indiehackers.com"
+  ) {
     return normalizeBlogPost(url) ?? normalizePublicationPage(url);
   }
   if (

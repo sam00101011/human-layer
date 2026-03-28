@@ -35,6 +35,7 @@ type PendingAction =
   | { type: "submit_take" }
   | { type: "save_page" }
   | { type: "follow_profile"; profileId: string }
+  | { type: "report_comment"; commentId: string }
   | null;
 
 function isErrorResponsePayload(value: unknown): value is ErrorResponsePayload {
@@ -61,6 +62,7 @@ export function OverlayController({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [saved, setSaved] = useState(false);
   const [followedProfileIds, setFollowedProfileIds] = useState<string[]>([]);
+  const [reportedCommentIds, setReportedCommentIds] = useState<string[]>([]);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [authResumeCount, setAuthResumeCount] = useState(0);
   const trackedOverlayKeyRef = useRef<string | null>(null);
@@ -100,6 +102,7 @@ export function OverlayController({
 
     const payload = response.json as PageLookupResponse;
     setLookup(payload);
+    setSaved(Boolean(payload.savedByViewer));
     setSurfaceState("ready");
     setStatusMessage(null);
     return true;
@@ -113,6 +116,10 @@ export function OverlayController({
 
   function openPage(pageId: string) {
     window.open(`${appUrl}/pages/${pageId}`, "_blank", "noopener,noreferrer");
+  }
+
+  function openBookmarks() {
+    window.open(`${appUrl}/bookmarks`, "_blank", "noopener,noreferrer");
   }
 
   function openProfile(handle: string) {
@@ -170,6 +177,11 @@ export function OverlayController({
 
       if (queuedAction.type === "save_page") {
         await handleSave();
+        return;
+      }
+
+      if (queuedAction.type === "report_comment") {
+        await handleReportComment(queuedAction.commentId);
         return;
       }
 
@@ -347,6 +359,28 @@ export function OverlayController({
     }
   }
 
+  async function handleReportComment(commentId: string) {
+    const authToken = await getAuthorizedToken();
+    if (!authToken) {
+      setPendingAction({ type: "report_comment", commentId });
+      setStatusMessage("Finish verification to report this comment.");
+      openVerify();
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const ok = await postJson(`${appUrl}/api/comments/${commentId}/report`, {
+        reasonCode: "needs_review"
+      }, authToken);
+      if (!ok) return;
+      setReportedCommentIds((current) => current.includes(commentId) ? current : [...current, commentId]);
+      setStatusMessage("Comment reported for review.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   return (
     <OverlayView
       draftComment={draftComment}
@@ -356,12 +390,15 @@ export function OverlayController({
       lookup={lookup}
       onDraftCommentChange={setDraftComment}
       onFollow={handleFollow}
+      onOpenBookmarks={openBookmarks}
       onOpenPage={openPage}
       onOpenProfile={openProfile}
       onOpenFeedback={openFeedback}
+      onReportComment={handleReportComment}
       onRetry={() => {
         void refreshLookup({ replaceShell: true });
       }}
+      reportedCommentIds={reportedCommentIds}
       onSave={handleSave}
       onSubmitTake={handleSubmitTake}
       onVerify={openVerify}

@@ -55,6 +55,24 @@ describe("getOverlayTarget", () => {
     expect(getOverlayTarget("https://gist.github.com/gaearon/91df0df1")?.pageKind).toBe(
       "gist_snippet"
     );
+    expect(getOverlayTarget("https://stackoverflow.com/questions/12345678/how-to-ship-it")?.pageKind).toBe(
+      "qa_question"
+    );
+    expect(getOverlayTarget("https://arxiv.org/abs/1706.03762")?.pageKind).toBe("research_page");
+    expect(getOverlayTarget("https://www.crunchbase.com/organization/openai")?.pageKind).toBe(
+      "product_page"
+    );
+    expect(
+      getOverlayTarget("https://marketplace.visualstudio.com/items?itemName=ms-python.python")
+        ?.pageKind
+    ).toBe("marketplace_item");
+    expect(getOverlayTarget("https://bitbucket.org/atlassian/python-bitbucket")?.pageKind).toBe(
+      "repository_page"
+    );
+    expect(getOverlayTarget("https://docs.rs/tokio/latest/tokio/")?.pageKind).toBe("docs_page");
+    expect(getOverlayTarget("https://dribbble.com/shots/12345678-human-layer")?.pageKind).toBe(
+      "showcase_page"
+    );
   });
 
   it("rejects unsupported GitHub paths", () => {

@@ -2,6 +2,8 @@ import Link from "next/link";
 import { findPageById, getPageThreadSnapshot } from "@human-layer/db";
 import { notFound } from "next/navigation";
 
+import { ReportCommentButton } from "../../../components/report-comment-button";
+
 function formatPageKind(pageKind: string) {
   return pageKind.replace(/_/g, " ");
 }
@@ -85,6 +87,7 @@ export default async function HumanLayerPage(props: {
               </span>
             </div>
             <p>{thread.topHumanTake.body}</p>
+            <ReportCommentButton commentId={thread.topHumanTake.commentId} compact />
           </article>
         ) : (
           <p className="muted">No top human take yet.</p>
@@ -125,6 +128,7 @@ export default async function HumanLayerPage(props: {
                 </span>
               </div>
               <p>{comment.body}</p>
+              <ReportCommentButton commentId={comment.commentId} compact />
             </article>
           ))
         )}

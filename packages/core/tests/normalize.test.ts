@@ -176,6 +176,39 @@ describe("normalizeUrl", () => {
     ).toBe("figma_community_resource");
   });
 
+  it("normalizes Q&A and research pages", () => {
+    expect(normalizeUrl("https://stackoverflow.com/questions/12345678/how-to-ship-it")?.pageKind).toBe(
+      "qa_question"
+    );
+    expect(
+      normalizeUrl("https://softwareengineering.stackexchange.com/q/7654321")?.canonicalUrl
+    ).toBe("https://softwareengineering.stackexchange.com/questions/7654321");
+    expect(normalizeUrl("https://arxiv.org/abs/1706.03762")?.pageKind).toBe("research_page");
+    expect(normalizeUrl("https://paperswithcode.com/dataset/humaneval")?.pageKind).toBe(
+      "research_page"
+    );
+    expect(normalizeUrl("https://openreview.net/forum?id=abc123")?.pageKind).toBe("research_page");
+  });
+
+  it("normalizes product and marketplace pages", () => {
+    expect(normalizeUrl("https://www.crunchbase.com/organization/openai")?.pageKind).toBe(
+      "product_page"
+    );
+    expect(normalizeUrl("https://www.indiehackers.com/product/linear")?.pageKind).toBe(
+      "product_page"
+    );
+    expect(normalizeUrl("https://betalist.com/startups/arc-browser")?.pageKind).toBe(
+      "product_page"
+    );
+    expect(
+      normalizeUrl("https://marketplace.visualstudio.com/items?itemName=ms-python.python")
+        ?.pageKind
+    ).toBe("marketplace_item");
+    expect(normalizeUrl("https://obsidian.md/plugins?id=templater-obsidian")?.pageKind).toBe(
+      "marketplace_item"
+    );
+  });
+
   it("normalizes docs-like surfaces", () => {
     expect(normalizeUrl("https://workspace.readme.io/reference/getting-started")?.pageKind).toBe(
       "docs_page"
@@ -216,6 +249,8 @@ describe("normalizeUrl", () => {
     expect(normalizeUrl("https://www.nuget.org/packages/Newtonsoft.Json")?.pageKind).toBe(
       "registry_package"
     );
+    expect(normalizeUrl("https://pub.dev/packages/http")?.pageKind).toBe("registry_package");
+    expect(normalizeUrl("https://jsr.io/@std/path")?.pageKind).toBe("registry_package");
     expect(normalizeUrl("https://npmtrends.com/compare/react-vs-vue")?.pageKind).toBe(
       "package_comparison_page"
     );
@@ -226,6 +261,10 @@ describe("normalizeUrl", () => {
       "model_page"
     );
     expect(normalizeUrl("https://lovable.dev/projects/abc123")?.pageKind).toBe("showcase_page");
+    expect(normalizeUrl("https://openrouter.ai/models/openai/gpt-5.4")?.pageKind).toBe(
+      "model_page"
+    );
+    expect(normalizeUrl("https://www.kaggle.com/models/google/gemma")?.pageKind).toBe("model_page");
     expect(normalizeUrl("https://www.kaggle.com/datasets/startupsci/titanic-data-set")?.pageKind).toBe(
       "kaggle_resource"
     );
@@ -234,6 +273,26 @@ describe("normalizeUrl", () => {
     );
     expect(normalizeUrl("https://replit.com/@sam00101011/hello-human-layer")?.pageKind).toBe(
       "notebook_page"
+    );
+  });
+
+  it("normalizes repository, docs, and design showcase pages", () => {
+    expect(normalizeUrl("https://bitbucket.org/atlassian/python-bitbucket")?.pageKind).toBe(
+      "repository_page"
+    );
+    expect(
+      normalizeUrl("https://bitbucket.org/atlassian/python-bitbucket/pull-requests/12")
+        ?.pageKind
+    ).toBe("issue_page");
+    expect(normalizeUrl("https://git.sr.ht/~sircmpwn/sr.ht-docs")?.pageKind).toBe(
+      "repository_page"
+    );
+    expect(normalizeUrl("https://docs.rs/tokio/latest/tokio/")?.pageKind).toBe("docs_page");
+    expect(normalizeUrl("https://dribbble.com/shots/12345678-human-layer")?.pageKind).toBe(
+      "showcase_page"
+    );
+    expect(normalizeUrl("https://www.behance.net/gallery/123456789/Case-Study")?.pageKind).toBe(
+      "showcase_page"
     );
   });
 

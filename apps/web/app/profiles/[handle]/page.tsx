@@ -2,6 +2,8 @@ import Link from "next/link";
 import { getProfileSnapshotByHandle } from "@human-layer/db";
 import { notFound } from "next/navigation";
 
+import { ReportCommentButton } from "../../../components/report-comment-button";
+
 function formatPageKind(pageKind: string) {
   return pageKind.replace(/_/g, " ");
 }
@@ -85,6 +87,7 @@ export default async function ProfilePage(props: {
                 </p>
               </div>
               <p>{comment.body}</p>
+              <ReportCommentButton commentId={comment.commentId} compact />
               <div className="link-row">
                 <Link className="inline-link" href={`/pages/${comment.pageId}`}>
                   Open Human Layer page

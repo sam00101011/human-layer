@@ -3,11 +3,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   lookupPageByUrl: vi.fn(),
+  hasProfileSavedPage: vi.fn(),
   getAuthenticatedProfileFromRequest: vi.fn()
 }));
 
 vi.mock("../../../lib/page-lookup", () => ({
   lookupPageByUrl: mocks.lookupPageByUrl
+}));
+
+vi.mock("@human-layer/db", () => ({
+  hasProfileSavedPage: mocks.hasProfileSavedPage
 }));
 
 vi.mock("../../../lib/auth", async () => {
@@ -24,6 +29,7 @@ import { GET } from "./route";
 describe("GET /api/pages/lookup", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.hasProfileSavedPage.mockResolvedValue(false);
   });
 
   it("returns 400 when the url parameter is missing", async () => {
@@ -62,6 +68,7 @@ describe("GET /api/pages/lookup", () => {
       id: "profile-1",
       handle: "demo_builder"
     });
+    mocks.hasProfileSavedPage.mockResolvedValue(true);
 
     const response = await GET(
       new NextRequest(
@@ -91,6 +98,7 @@ describe("GET /api/pages/lookup", () => {
         topHumanTake: null,
         recentComments: []
       },
+      savedByViewer: true,
       viewer: {
         profileId: "profile-1",
         handle: "demo_builder"

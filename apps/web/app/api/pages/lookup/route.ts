@@ -1,3 +1,4 @@
+import { hasProfileSavedPage } from "@human-layer/db";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getAuthenticatedProfileFromRequest, toViewer } from "../../../lib/auth";
@@ -30,6 +31,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       ...lookup,
+      savedByViewer:
+        viewer && lookup.page ? await hasProfileSavedPage({ pageId: lookup.page.id, profileId: viewer.id }) : false,
       viewer: toViewer(viewer)
     });
   } catch (error) {

@@ -12,14 +12,17 @@ type OverlayViewProps = {
   lookup: PageLookupResponse | null;
   onDraftCommentChange(value: string): void;
   onFollow(profileId: string): void;
+  onOpenBookmarks(): void;
   onOpenFeedback(): void;
   onOpenPage(pageId: string): void;
   onOpenProfile(handle: string): void;
+  onReportComment(commentId: string): void;
   onRetry(): void;
   onSave(): void;
   onSubmitTake(): void;
   onVerify(): void;
   onVerdictSelect(verdict: Verdict | null): void;
+  reportedCommentIds: string[];
   selectedVerdict: Verdict | null;
   statusMessage: string | null;
   surfaceState: OverlaySurfaceState;
@@ -116,6 +119,31 @@ function renderFollowButton(props: {
       type="button"
     >
       {alreadyFollowing ? "Following" : `Follow @${props.profileHandle}`}
+    </button>
+  );
+}
+
+function renderReportButton(props: {
+  commentId: string;
+  isSubmitting: boolean;
+  onReportComment(commentId: string): void;
+  reportedCommentIds: string[];
+}) {
+  const alreadyReported = props.reportedCommentIds.includes(props.commentId);
+
+  return (
+    <button
+      disabled={props.isSubmitting || alreadyReported}
+      onClick={() => props.onReportComment(props.commentId)}
+      style={{
+        ...secondaryButtonStyle,
+        padding: "7px 10px",
+        fontSize: 12,
+        opacity: props.isSubmitting || alreadyReported ? 0.6 : 1
+      }}
+      type="button"
+    >
+      {alreadyReported ? "Reported" : props.isSubmitting ? "Reporting..." : "Report"}
     </button>
   );
 }
@@ -254,13 +282,20 @@ export function OverlayView(props: OverlayViewProps) {
             human to leave a verdict or comment.
           </p>
           {lookup.viewer ? (
-            <div style={{ ...pillStyle, width: "fit-content" }}>
-              <span>Signed in as</span>
-              {renderProfileHandle({
-                handle: lookup.viewer.handle,
-                onOpenProfile: props.onOpenProfile,
-                variant: "pill"
-              })}
+            <div style={{ display: "grid", gap: 8 }}>
+              <div style={{ ...pillStyle, width: "fit-content" }}>
+                <span>Signed in as</span>
+                {renderProfileHandle({
+                  handle: lookup.viewer.handle,
+                  onOpenProfile: props.onOpenProfile,
+                  variant: "pill"
+                })}
+              </div>
+              <div style={actionRowStyle}>
+                <button onClick={props.onOpenBookmarks} style={secondaryButtonStyle} type="button">
+                  My bookmarks
+                </button>
+              </div>
             </div>
           ) : (
             renderVerifyPrompt(props)
@@ -270,13 +305,20 @@ export function OverlayView(props: OverlayViewProps) {
       ) : (
         <div style={{ display: "grid", gap: 12 }}>
           {lookup.viewer ? (
-            <div style={{ ...pillStyle, width: "fit-content" }}>
-              <span>Signed in as</span>
-              {renderProfileHandle({
-                handle: lookup.viewer.handle,
-                onOpenProfile: props.onOpenProfile,
-                variant: "pill"
-              })}
+            <div style={{ display: "grid", gap: 8 }}>
+              <div style={{ ...pillStyle, width: "fit-content" }}>
+                <span>Signed in as</span>
+                {renderProfileHandle({
+                  handle: lookup.viewer.handle,
+                  onOpenProfile: props.onOpenProfile,
+                  variant: "pill"
+                })}
+              </div>
+              <div style={actionRowStyle}>
+                <button onClick={props.onOpenBookmarks} style={secondaryButtonStyle} type="button">
+                  My bookmarks
+                </button>
+              </div>
             </div>
           ) : (
             renderVerifyPrompt(props)
@@ -299,6 +341,14 @@ export function OverlayView(props: OverlayViewProps) {
                   onFollow: props.onFollow
                 })
               : null}
+            {lookup.thread.topHumanTake
+              ? renderReportButton({
+                  commentId: lookup.thread.topHumanTake.commentId,
+                  isSubmitting: props.isSubmitting,
+                  onReportComment: props.onReportComment,
+                  reportedCommentIds: props.reportedCommentIds
+                })
+              : null}
           </div>
           <div style={{ display: "grid", gap: 6 }}>
             <span style={sectionLabelStyle}>Verdicts</span>
@@ -319,6 +369,12 @@ export function OverlayView(props: OverlayViewProps) {
                   profileId: comment.profileId,
                   profileHandle: comment.profileHandle,
                   onFollow: props.onFollow
+                })}
+                {renderReportButton({
+                  commentId: comment.commentId,
+                  isSubmitting: props.isSubmitting,
+                  onReportComment: props.onReportComment,
+                  reportedCommentIds: props.reportedCommentIds
                 })}
               </div>
             ))}

@@ -137,6 +137,33 @@ export const commentHelpfulVotes = pgTable(
   })
 );
 
+export const commentReports = pgTable(
+  "comment_reports",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    commentId: uuid("comment_id")
+      .notNull()
+      .references(() => comments.id, { onDelete: "cascade" }),
+    reporterProfileId: uuid("reporter_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    reasonCode: text("reason_code").notNull(),
+    details: text("details"),
+    status: text("status").notNull().default("open"),
+    reviewedByProfileId: uuid("reviewed_by_profile_id").references(() => profiles.id, {
+      onDelete: "set null"
+    }),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    commentReporterUnique: uniqueIndex("comment_reports_comment_reporter_unique").on(
+      table.commentId,
+      table.reporterProfileId
+    )
+  })
+);
+
 export const verdicts = pgTable(
   "verdicts",
   {
