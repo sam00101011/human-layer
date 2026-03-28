@@ -62,7 +62,7 @@ async function waitForPopup(page: Page, action: () => Promise<void>) {
 async function navigateToGitHubPath(page: Page, pathname: string) {
   const url = new URL(pathname, githubBaseUrl).toString();
   await page.goto(url, { waitUntil: "domcontentloaded" });
-  await page.waitForURL(new RegExp(escapeRegex(pathname)), { timeout: 10000 });
+  await expect(page).toHaveURL(new RegExp(escapeRegex(pathname)), { timeout: 10000 });
 }
 
 async function verifyHappyPath(page: Page) {
