@@ -34,6 +34,7 @@ It does not assume a final domain name yet. Use provider placeholders first and 
 
 Use these examples as the source of truth for required configuration:
 - `FIRST-LAUNCH-CHECKLIST.md`
+- `PRODUCTION-RELEASE-CHECKLIST.md`
 - `apps/web/.env.production.example`
 - `apps/extension/.env.production.example`
 - `PROVIDER-SETUP.md`
@@ -216,7 +217,8 @@ Recommended release sequence:
 3. Vercel deploys the web app.
 4. Smoke-check the hosted lookup API.
 5. Build the extension with production `WXT_APP_URL`.
-6. Publish extension artifact.
+6. Archive the tested extension artifact and save the release metadata.
+7. Publish extension artifact.
 
 ## Migrations and data safety
 
