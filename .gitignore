@@ -7,6 +7,7 @@ node_modules
 output
 dist
 coverage
+release-artifacts
 .DS_Store
 .env
 .env.local
