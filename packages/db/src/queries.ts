@@ -27,6 +27,7 @@ import {
   commentReports,
   comments,
   follows,
+  notificationReads,
   pageAliases,
   pages,
   profiles,
@@ -56,6 +57,42 @@ export type StoredProfile = {
 
 export type BookmarkedPage = PageSummary & {
   savedAt: string;
+};
+
+export type NotificationSource = "bookmarked_page" | "followed_profile";
+
+export type NotificationItem = {
+  commentId: string;
+  body: string;
+  createdAt: string;
+  helpfulCount: number;
+  authorProfileId: string;
+  authorHandle: string;
+  authorReputation?: ContributorReputation;
+  pageId: string;
+  pageKind: PageSummary["pageKind"];
+  pageTitle: string;
+  pageCanonicalUrl: string;
+  pageHost: string;
+  sources: NotificationSource[];
+  unread: boolean;
+  reason: string;
+};
+
+export type FollowGraphItem = {
+  commentId: string;
+  body: string;
+  createdAt: string;
+  helpfulCount: number;
+  authorProfileId: string;
+  authorHandle: string;
+  authorReputation?: ContributorReputation;
+  pageId: string;
+  pageKind: PageSummary["pageKind"];
+  pageTitle: string;
+  pageCanonicalUrl: string;
+  pageHost: string;
+  reason: string;
 };
 
 export type ModerationQueueItem = {
@@ -172,6 +209,18 @@ function defaultContributorReputation() {
     distinctPageCount: 0,
     verdictCount: 0
   });
+}
+
+function buildNotificationReason(sources: NotificationSource[]): string {
+  if (sources.includes("bookmarked_page") && sources.includes("followed_profile")) {
+    return "Someone you follow posted on a page you bookmarked.";
+  }
+
+  if (sources.includes("followed_profile")) {
+    return "A followed profile published a new take.";
+  }
+
+  return "A bookmarked page has new activity.";
 }
 
 async function getContributorReputationMap(profileIds: string[]): Promise<Map<string, ContributorReputation>> {
@@ -1224,6 +1273,245 @@ export async function getBookmarkedPagesForProfile(
     host: row.host,
     title: row.title,
     savedAt: row.savedAt.toISOString()
+  }));
+}
+
+async function getUnreadNotificationCommentIds(profileId: string): Promise<string[]> {
+  const rows = await db
+    .select({
+      commentId: comments.id
+    })
+    .from(comments)
+    .leftJoin(
+      saves,
+      and(eq(saves.pageId, comments.pageId), eq(saves.profileId, profileId))
+    )
+    .leftJoin(
+      follows,
+      and(eq(follows.followeeProfileId, comments.profileId), eq(follows.followerProfileId, profileId))
+    )
+    .leftJoin(
+      notificationReads,
+      and(eq(notificationReads.commentId, comments.id), eq(notificationReads.profileId, profileId))
+    )
+    .where(
+      and(
+        eq(comments.hidden, false),
+        ne(comments.profileId, profileId),
+        or(sql`${saves.id} is not null`, sql`${follows.id} is not null`),
+        sql`${notificationReads.id} is null`
+      )
+    )
+    .groupBy(comments.id)
+    .orderBy(desc(sql`max(${comments.createdAt})`));
+
+  return rows.map((row) => row.commentId);
+}
+
+export async function getUnreadNotificationCount(profileId: string): Promise<number> {
+  const [row] = await db
+    .select({
+      count: sql<number>`count(distinct ${comments.id})::int`
+    })
+    .from(comments)
+    .leftJoin(
+      saves,
+      and(eq(saves.pageId, comments.pageId), eq(saves.profileId, profileId))
+    )
+    .leftJoin(
+      follows,
+      and(eq(follows.followeeProfileId, comments.profileId), eq(follows.followerProfileId, profileId))
+    )
+    .leftJoin(
+      notificationReads,
+      and(eq(notificationReads.commentId, comments.id), eq(notificationReads.profileId, profileId))
+    )
+    .where(
+      and(
+        eq(comments.hidden, false),
+        ne(comments.profileId, profileId),
+        or(sql`${saves.id} is not null`, sql`${follows.id} is not null`),
+        sql`${notificationReads.id} is null`
+      )
+    );
+
+  return row?.count ?? 0;
+}
+
+export async function markNotificationsRead(params: {
+  profileId: string;
+  commentIds: string[];
+}): Promise<number> {
+  const commentIds = [...new Set(params.commentIds)];
+  if (commentIds.length === 0) {
+    return 0;
+  }
+
+  await db
+    .insert(notificationReads)
+    .values(
+      commentIds.map((commentId) => ({
+        profileId: params.profileId,
+        commentId
+      }))
+    )
+    .onConflictDoNothing();
+
+  return commentIds.length;
+}
+
+export async function markAllNotificationsRead(profileId: string): Promise<number> {
+  const commentIds = await getUnreadNotificationCommentIds(profileId);
+  return markNotificationsRead({
+    profileId,
+    commentIds
+  });
+}
+
+export async function getNotificationsForProfile(
+  profileId: string,
+  limit = 50
+): Promise<NotificationItem[]> {
+  const rows = await db
+    .select({
+      commentId: comments.id,
+      body: comments.body,
+      createdAt: comments.createdAt,
+      helpfulCount: sql<number>`count(${commentHelpfulVotes.id})::int`,
+      authorProfileId: profiles.id,
+      authorHandle: profiles.handle,
+      pageId: pages.id,
+      pageKind: pages.pageKind,
+      pageTitle: pages.title,
+      pageCanonicalUrl: pages.canonicalUrl,
+      pageHost: pages.host,
+      fromBookmarkedPage: sql<boolean>`bool_or(${saves.id} is not null)`,
+      fromFollowedProfile: sql<boolean>`bool_or(${follows.id} is not null)`,
+      readAt: sql<Date | null>`max(${notificationReads.createdAt})`
+    })
+    .from(comments)
+    .innerJoin(pages, eq(pages.id, comments.pageId))
+    .innerJoin(profiles, eq(profiles.id, comments.profileId))
+    .leftJoin(commentHelpfulVotes, eq(commentHelpfulVotes.commentId, comments.id))
+    .leftJoin(
+      saves,
+      and(eq(saves.pageId, comments.pageId), eq(saves.profileId, profileId))
+    )
+    .leftJoin(
+      follows,
+      and(eq(follows.followeeProfileId, comments.profileId), eq(follows.followerProfileId, profileId))
+    )
+    .leftJoin(
+      notificationReads,
+      and(eq(notificationReads.commentId, comments.id), eq(notificationReads.profileId, profileId))
+    )
+    .where(
+      and(
+        eq(comments.hidden, false),
+        ne(comments.profileId, profileId),
+        or(sql`${saves.id} is not null`, sql`${follows.id} is not null`)
+      )
+    )
+    .groupBy(
+      comments.id,
+      comments.body,
+      comments.createdAt,
+      profiles.id,
+      profiles.handle,
+      pages.id,
+      pages.pageKind,
+      pages.title,
+      pages.canonicalUrl,
+      pages.host
+    )
+    .orderBy(desc(comments.createdAt))
+    .limit(limit);
+
+  const reputationMap = await getContributorReputationMap(rows.map((row) => row.authorProfileId));
+
+  return rows.map((row) => {
+    const sources: NotificationSource[] = [];
+    if (row.fromBookmarkedPage) sources.push("bookmarked_page");
+    if (row.fromFollowedProfile) sources.push("followed_profile");
+
+    return {
+      commentId: row.commentId,
+      body: row.body,
+      createdAt: row.createdAt.toISOString(),
+      helpfulCount: row.helpfulCount,
+      authorProfileId: row.authorProfileId,
+      authorHandle: row.authorHandle,
+      authorReputation: reputationMap.get(row.authorProfileId) ?? defaultContributorReputation(),
+      pageId: row.pageId,
+      pageKind: row.pageKind as PageSummary["pageKind"],
+      pageTitle: row.pageTitle,
+      pageCanonicalUrl: row.pageCanonicalUrl,
+      pageHost: row.pageHost,
+      sources,
+      unread: row.readAt === null,
+      reason: buildNotificationReason(sources)
+    };
+  });
+}
+
+export async function getFollowedProfileActivity(
+  profileId: string,
+  limit = 12
+): Promise<FollowGraphItem[]> {
+  const rows = await db
+    .select({
+      commentId: comments.id,
+      body: comments.body,
+      createdAt: comments.createdAt,
+      helpfulCount: sql<number>`count(${commentHelpfulVotes.id})::int`,
+      authorProfileId: profiles.id,
+      authorHandle: profiles.handle,
+      pageId: pages.id,
+      pageKind: pages.pageKind,
+      pageTitle: pages.title,
+      pageCanonicalUrl: pages.canonicalUrl,
+      pageHost: pages.host
+    })
+    .from(comments)
+    .innerJoin(profiles, eq(profiles.id, comments.profileId))
+    .innerJoin(pages, eq(pages.id, comments.pageId))
+    .innerJoin(
+      follows,
+      and(eq(follows.followeeProfileId, comments.profileId), eq(follows.followerProfileId, profileId))
+    )
+    .leftJoin(commentHelpfulVotes, eq(commentHelpfulVotes.commentId, comments.id))
+    .where(and(eq(comments.hidden, false), ne(comments.profileId, profileId)))
+    .groupBy(
+      comments.id,
+      comments.body,
+      comments.createdAt,
+      profiles.id,
+      profiles.handle,
+      pages.id,
+      pages.pageKind,
+      pages.title,
+      pages.canonicalUrl,
+      pages.host
+    )
+    .orderBy(desc(comments.createdAt))
+    .limit(limit);
+
+  const reputationMap = await getContributorReputationMap(rows.map((row) => row.authorProfileId));
+
+  return rows.map((row) => ({
+    commentId: row.commentId,
+    body: row.body,
+    createdAt: row.createdAt.toISOString(),
+    helpfulCount: row.helpfulCount,
+    authorProfileId: row.authorProfileId,
+    authorHandle: row.authorHandle,
+    authorReputation: reputationMap.get(row.authorProfileId) ?? defaultContributorReputation(),
+    pageId: row.pageId,
+    pageKind: row.pageKind as PageSummary["pageKind"],
+    pageTitle: row.pageTitle,
+    pageCanonicalUrl: row.pageCanonicalUrl,
+    pageHost: row.pageHost,
+    reason: "New take from someone you follow."
   }));
 }
 

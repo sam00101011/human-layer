@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getInterestTagLabel } from "@human-layer/core";
 import {
+  getFollowedProfileActivity,
   getPeopleToFollow,
   getRecommendedTakes,
   getTrendingPages,
@@ -30,9 +31,10 @@ export default async function HomePage(props: {
   const query = searchParams.q?.trim() ?? "";
   const viewer = await getAuthenticatedProfileFromCookies();
 
-  const [trendingPages, recommendedTakes, peopleToFollow, searchResults] = await Promise.all([
+  const [trendingPages, recommendedTakes, followedFeed, peopleToFollow, searchResults] = await Promise.all([
     getTrendingPages(6),
     getRecommendedTakes(6),
+    viewer ? getFollowedProfileActivity(viewer.id, 6) : Promise.resolve([]),
     getPeopleToFollow(6, viewer?.id),
     query ? searchDiscovery(query, 5) : Promise.resolve({ pages: [], takes: [], profiles: [] })
   ]);
@@ -277,6 +279,51 @@ export default async function HomePage(props: {
         </div>
       </section>
 
+      {viewer ? (
+        <section className="card stack">
+          <div className="section-header">
+            <h2>From people you follow</h2>
+            <span className="muted">Fresh takes from the follow graph tied to your verified-human profile.</span>
+          </div>
+          {followedFeed.length === 0 ? (
+            <p className="muted">
+              Follow a few people and their new takes will start showing up here. You can also track them from Notifications.
+            </p>
+          ) : (
+            <div className="discovery-grid">
+              {followedFeed.map((take) => (
+                <article className="discovery-card" key={take.commentId}>
+                  <div className="chip-row">
+                    <span className="trust-badge">Following</span>
+                    {take.authorReputation ? (
+                      <span className={getReputationBadgeClass(take.authorReputation.level)}>
+                        {take.authorReputation.label}
+                      </span>
+                    ) : null}
+                    <Link className="inline-link" href={`/profiles/${take.authorHandle}`}>
+                      @{take.authorHandle}
+                    </Link>
+                  </div>
+                  <strong>{take.pageTitle}</strong>
+                  <p>{take.body}</p>
+                  <p className="muted">
+                    {take.reason} • Helpful {take.helpfulCount} • {formatDate(take.createdAt)}
+                  </p>
+                  <div className="link-row">
+                    <Link className="inline-link" href={`/pages/${take.pageId}`}>
+                      Open Human Layer page
+                    </Link>
+                    <Link className="inline-link" href={take.pageCanonicalUrl} rel="noreferrer" target="_blank">
+                      Open source page
+                    </Link>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      ) : null}
+
       <section className="card stack">
         <div className="section-header">
           <h2>People to follow</h2>
@@ -318,6 +365,11 @@ export default async function HomePage(props: {
           <Link className="button secondary" href="/bookmarks">
             Bookmarks
           </Link>
+          {viewer ? (
+            <Link className="button secondary" href="/notifications">
+              Notifications
+            </Link>
+          ) : null}
           <Link className="button secondary" href="/support">
             Support
           </Link>

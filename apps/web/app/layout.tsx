@@ -4,6 +4,7 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { Source_Sans_3, Source_Serif_4 } from 'next/font/google';
+import { getUnreadNotificationCount } from '@human-layer/db';
 
 import { getAuthenticatedProfileFromCookies, isAdminProfile } from './lib/auth';
 
@@ -18,6 +19,7 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const viewer = await getAuthenticatedProfileFromCookies();
   const canReview = isAdminProfile(viewer);
+  const unreadNotifications = viewer ? await getUnreadNotificationCount(viewer.id) : 0;
 
   return (
     <html lang="en" className={`${sans.variable} ${serif.variable}`}>
@@ -36,6 +38,14 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               </Link>
               <Link className="top-nav-link" href="/bookmarks">
                 Bookmarks
+              </Link>
+              <Link className="top-nav-link top-nav-link-with-badge" href="/notifications">
+                Notifications
+                {unreadNotifications > 0 ? (
+                  <span className="top-nav-link-badge">
+                    {unreadNotifications > 99 ? "99+" : unreadNotifications}
+                  </span>
+                ) : null}
               </Link>
               {canReview ? (
                 <Link className="top-nav-link" href="/moderation">
@@ -64,6 +74,9 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               </Link>
               <Link className="site-footer-link" href="/bookmarks">
                 Bookmarks
+              </Link>
+              <Link className="site-footer-link" href="/notifications">
+                Notifications
               </Link>
               <Link className="site-footer-link" href="/privacy">
                 Privacy

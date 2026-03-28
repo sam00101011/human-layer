@@ -219,6 +219,26 @@ export const follows = pgTable(
   })
 );
 
+export const notificationReads = pgTable(
+  "notification_reads",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    profileId: uuid("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    commentId: uuid("comment_id")
+      .notNull()
+      .references(() => comments.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    profileCommentUnique: uniqueIndex("notification_reads_profile_comment_unique").on(
+      table.profileId,
+      table.commentId
+    )
+  })
+);
+
 export const supportedDomains = pgTable("supported_domains", {
   id: text("id").primaryKey(),
   enabled: boolean("enabled").notNull(),
