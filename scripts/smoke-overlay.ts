@@ -73,14 +73,14 @@ async function verifyHappyPath(page: Page) {
     await getOverlay(page).getByRole("button", { name: "Human Layer" }).click();
   });
   await expect(fullPage).toHaveURL(/\/pages\//);
-  await expect(fullPage.locator("main")).toContainText("Top human take");
+  await expect(fullPage.getByRole("main").first()).toContainText("Top human take");
   await fullPage.close();
 
   const profilePage = await waitForPopup(page, async () => {
     await getOverlay(page).getByRole("button", { name: "@demo_builder" }).first().click();
   });
   await expect(profilePage).toHaveURL(/\/profiles\/demo_builder$/);
-  await expect(profilePage.locator("main")).toContainText("@demo_builder");
+  await expect(profilePage.getByRole("main").first()).toContainText("@demo_builder");
   await profilePage.close();
 }
 
