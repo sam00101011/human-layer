@@ -1,6 +1,13 @@
 import Link from "next/link";
 
-export default function SupportPage() {
+export default async function SupportPage(props: {
+  searchParams: Promise<{ source?: string; contextUrl?: string }>;
+}) {
+  const searchParams = await props.searchParams;
+  const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL?.trim();
+  const source = searchParams.source?.trim();
+  const contextUrl = searchParams.contextUrl?.trim();
+
   return (
     <main className="page-shell stack legal-shell">
       <span className="pill">Support</span>
@@ -22,6 +29,30 @@ export default function SupportPage() {
           <li>A screenshot or screen recording if the issue is visual.</li>
         </ul>
       </section>
+
+      {source || contextUrl ? (
+        <section className="card stack">
+          <h2>Current Context</h2>
+          <ul className="legal-list">
+            {source ? <li>Source: {source}</li> : null}
+            {contextUrl ? (
+              <li>
+                Context URL: <a href={contextUrl}>{contextUrl}</a>
+              </li>
+            ) : null}
+          </ul>
+        </section>
+      ) : null}
+
+      {supportEmail ? (
+        <section className="card stack">
+          <h2>Contact</h2>
+          <p className="muted">
+            For beta support, email{" "}
+            <a href={`mailto:${supportEmail}`}>{supportEmail}</a>.
+          </p>
+        </section>
+      ) : null}
 
       <section className="card stack">
         <h2>Useful Links</h2>

@@ -34,9 +34,12 @@ It does not assume a final domain name yet. Use provider placeholders first and 
 
 Use these examples as the source of truth for required configuration:
 - `FIRST-LAUNCH-CHECKLIST.md`
+- `LAUNCH-GUARDRAILS.md`
 - `PRODUCTION-RELEASE-CHECKLIST.md`
 - `apps/web/.env.production.example`
+- `apps/web/.env.staging.example`
 - `apps/extension/.env.production.example`
+- `apps/extension/.env.staging.example`
 - `PROVIDER-SETUP.md`
 
 Keep production secrets in the platform secret manager, not in committed files.
@@ -69,6 +72,7 @@ Keep production secrets in the platform secret manager, not in committed files.
 - `NEXT_PUBLIC_SENTRY_DSN`
 - `NEXT_PUBLIC_POSTHOG_KEY`
 - `NEXT_PUBLIC_POSTHOG_HOST`
+- `NEXT_PUBLIC_SUPPORT_EMAIL`
 
 ### Object storage for later-but-soon
 
@@ -234,6 +238,7 @@ Do not run seed data in production unless you intentionally want demo content.
 Minimum bar:
 - Sentry enabled for web
 - structured logs for lookup failures
+- scheduled uptime workflow for `/verify` and `/api/pages/lookup`
 - uptime check against:
   - home page
   - `/api/pages/lookup?url=https%3A%2F%2Fgithub.com%2Fvercel%2Fnext.js`

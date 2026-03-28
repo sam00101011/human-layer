@@ -25,6 +25,16 @@ export const VERDICTS = ["useful", "misleading", "outdated", "scam"] as const;
 
 export type Verdict = (typeof VERDICTS)[number];
 
+export const ANALYTICS_EVENTS = [
+  "overlay_opened",
+  "verify_started",
+  "verify_succeeded",
+  "comment_posted",
+  "page_saved"
+] as const;
+
+export type AnalyticsEventName = (typeof ANALYTICS_EVENTS)[number];
+
 export const INTEREST_TAGS = [
   "ai",
   "agents",

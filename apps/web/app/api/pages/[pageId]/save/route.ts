@@ -2,6 +2,7 @@ import { findPageById, savePageForProfile } from "@human-layer/db";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getAuthenticatedProfileFromRequest } from "../../../../lib/auth";
+import { captureAnalyticsEvent } from "../../../../lib/analytics";
 
 export async function POST(
   request: NextRequest,
@@ -21,6 +22,16 @@ export async function POST(
   await savePageForProfile({
     pageId,
     profileId: viewer.id
+  });
+
+  void captureAnalyticsEvent({
+    event: "page_saved",
+    distinctId: viewer.id,
+    properties: {
+      pageId,
+      pageKind: page.pageKind,
+      host: page.host
+    }
   });
 
   return NextResponse.json({ ok: true });

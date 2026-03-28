@@ -2,6 +2,7 @@ import { createCommentForPage, findPageById, getPageThreadSnapshot } from "@huma
 import { NextRequest, NextResponse } from "next/server";
 
 import { getAuthenticatedProfileFromRequest } from "../../../../lib/auth";
+import { captureAnalyticsEvent } from "../../../../lib/analytics";
 
 export async function POST(
   request: NextRequest,
@@ -28,6 +29,17 @@ export async function POST(
     pageId,
     profileId: viewer.id,
     body: commentBody
+  });
+
+  void captureAnalyticsEvent({
+    event: "comment_posted",
+    distinctId: viewer.id,
+    properties: {
+      pageId,
+      pageKind: page.pageKind,
+      host: page.host,
+      bodyLength: commentBody.length
+    }
   });
 
   return NextResponse.json({

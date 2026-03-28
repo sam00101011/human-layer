@@ -11,6 +11,7 @@ type OverlayViewProps = {
   lookup: PageLookupResponse | null;
   onDraftCommentChange(value: string): void;
   onFollow(profileId: string): void;
+  onOpenFeedback(): void;
   onOpenPage(pageId: string): void;
   onOpenProfile(handle: string): void;
   onRetry(): void;
@@ -161,8 +162,25 @@ function renderComposer(props: OverlayViewProps, lookup: PageLookupResponse) {
   );
 }
 
+function renderVerifyPrompt(props: Pick<OverlayViewProps, "onOpenFeedback" | "onVerify">) {
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      <button onClick={props.onVerify} style={buttonStyle} type="button">
+        Verify to write
+      </button>
+      <p style={helperNoteStyle}>
+        Verified human means one World ID-verified person can unlock write access with a
+        pseudonymous Human Layer profile.
+      </p>
+      <button onClick={props.onOpenFeedback} style={secondaryButtonStyle} type="button">
+        Feedback
+      </button>
+    </div>
+  );
+}
+
 export function OverlayView(props: OverlayViewProps) {
-  const { lookup, onVerify } = props;
+  const { lookup } = props;
 
   if (props.surfaceState === "loading") {
     return renderSurfaceShell({
@@ -178,9 +196,14 @@ export function OverlayView(props: OverlayViewProps) {
       pageKind: props.target.pageKind,
       message: "Human Layer is having trouble loading right now.",
       action: (
-        <button onClick={props.onRetry} style={secondaryButtonStyle} type="button">
-          Retry
-        </button>
+        <div style={actionRowStyle}>
+          <button onClick={props.onRetry} style={secondaryButtonStyle} type="button">
+            Retry
+          </button>
+          <button onClick={props.onOpenFeedback} style={secondaryButtonStyle} type="button">
+            Feedback
+          </button>
+        </div>
       )
     });
   }
@@ -190,6 +213,9 @@ export function OverlayView(props: OverlayViewProps) {
       <section data-state="unsupported" style={panelStyle}>
         <div style={badgeStyle}>Human Layer</div>
         <p style={mutedStyle}>This page is outside the Phase 0 supported surface list.</p>
+        <button onClick={props.onOpenFeedback} style={secondaryButtonStyle} type="button">
+          Feedback
+        </button>
       </section>
     );
   }
@@ -220,9 +246,7 @@ export function OverlayView(props: OverlayViewProps) {
               })}
             </div>
           ) : (
-            <button onClick={onVerify} style={buttonStyle} type="button">
-              Verify to write
-            </button>
+            renderVerifyPrompt(props)
           )}
           {renderComposer(props, lookup)}
         </div>
@@ -238,9 +262,7 @@ export function OverlayView(props: OverlayViewProps) {
               })}
             </div>
           ) : (
-            <button onClick={onVerify} style={buttonStyle} type="button">
-              Verify to write
-            </button>
+            renderVerifyPrompt(props)
           )}
           <div style={{ display: "grid", gap: 6 }}>
             <span style={sectionLabelStyle}>Top human take</span>
@@ -289,9 +311,21 @@ export function OverlayView(props: OverlayViewProps) {
       )}
 
       {props.statusMessage ? <p style={mutedStyle}>{props.statusMessage}</p> : null}
+      <div style={footerRowStyle}>
+        <span style={footerNoteStyle}>Beta feedback helps us keep Human Layer stable.</span>
+        <button onClick={props.onOpenFeedback} style={secondaryButtonStyle} type="button">
+          Feedback
+        </button>
+      </div>
     </section>
   );
 }
+
+const actionRowStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 8
+};
 
 const panelStyle: CSSProperties = {
   all: "initial",
@@ -351,6 +385,11 @@ const mutedStyle: CSSProperties = {
   color: "#d1d5db",
   fontSize: 14,
   lineHeight: 1.5
+};
+
+const helperNoteStyle: CSSProperties = {
+  ...mutedStyle,
+  fontSize: 12
 };
 
 const profileHandleButtonStyle: CSSProperties = {
@@ -424,4 +463,17 @@ const pillStyle: CSSProperties = {
   color: "#fde68a",
   fontSize: 12,
   fontWeight: 700
+};
+
+const footerRowStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 12
+};
+
+const footerNoteStyle: CSSProperties = {
+  color: "#9ca3af",
+  fontSize: 11,
+  lineHeight: 1.4
 };

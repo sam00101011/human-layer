@@ -28,15 +28,19 @@ Phase 1 identity and onboarding are in place:
 Useful maintenance commands:
 - `corepack pnpm dev:reset` clears the web and extension build output, restarts both dev servers, and waits for the lookup API to come back healthy
 - `corepack pnpm smoke:overlay` builds the extension if needed, opens Chrome with the unpacked extension, and smoke-tests the GitHub overlay plus page/profile navigation
+- `corepack pnpm guardrails:uptime` checks the production or staging verify and lookup surfaces
 
 Deployment and production setup:
 - `FIRST-LAUNCH-CHECKLIST.md`
 - `PRODUCTION-DEPLOYMENT.md`
+- `LAUNCH-GUARDRAILS.md`
 - `PRODUCTION-RELEASE-CHECKLIST.md`
 - `CHROME-WEB-STORE-BETA.md`
 - `PROVIDER-SETUP.md`
 - `apps/web/.env.production.example`
+- `apps/web/.env.staging.example`
 - `apps/extension/.env.production.example`
+- `apps/extension/.env.staging.example`
 
 Default local ports:
 - web app: `http://127.0.0.1:3000`

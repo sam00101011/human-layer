@@ -11,6 +11,7 @@ import {
   getSessionCookieName,
   getSessionCookieOptions
 } from "../../../../lib/auth";
+import { captureAnalyticsEvent } from "../../../../lib/analytics";
 import {
   WorldIdVerificationError,
   verifyWorldIdSubmission
@@ -109,6 +110,17 @@ export async function POST(request: NextRequest) {
         handle: profile.handle,
         interestTags: profile.interestTags,
         verifiedHuman: true
+      }
+    });
+
+    void captureAnalyticsEvent({
+      event: "verify_succeeded",
+      distinctId: profile.id,
+      properties: {
+        created,
+        source: body?.handoff ? "extension_handoff" : "web_app",
+        verificationLevel: verification.verificationLevel,
+        interestTagCount: interestTags.length
       }
     });
 

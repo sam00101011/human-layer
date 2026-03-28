@@ -9,6 +9,7 @@ import {
 } from "@worldcoin/idkit";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 import {
   extractLegacyProofPayload
@@ -17,6 +18,7 @@ import type {
   WorldIdClientConfig,
   WorldIdRequestConfig
 } from "../app/lib/world-id";
+import { captureBrowserAnalyticsEvent } from "../app/lib/browser-analytics";
 
 type WorldIdVerifyFormProps = {
   handoff: boolean;
@@ -205,6 +207,14 @@ export function WorldIdVerifyForm({
       return;
     }
 
+    void captureBrowserAnalyticsEvent("verify_started", {
+      source: handoff ? "extension_handoff" : "web_app",
+      mode: worldIdConfig.mode,
+      verificationLevel,
+      returnUrlPresent: Boolean(returnUrl),
+      selectedTagCount: selectedTags.length
+    });
+
     startTransition(() => {
       if (worldIdConfig.mode === "mock") {
         void handleMockSubmit().catch((error) => {
@@ -322,6 +332,26 @@ export function WorldIdVerifyForm({
           </span>
         </div>
       )}
+
+      <div className="field">
+        <span>Why verification exists</span>
+        <p className="helper">
+          Verified human means one World ID-verified person can unlock write access with a
+          pseudonymous Human Layer profile. We use that check to reduce spam while keeping public
+          handles separate from your World App identity.
+        </p>
+        <div className="chip-row">
+          <Link className="button secondary" href="/privacy">
+            Privacy
+          </Link>
+          <Link className="button secondary" href="/terms">
+            Terms
+          </Link>
+          <Link className="button secondary" href="/support?source=verify">
+            Support
+          </Link>
+        </div>
+      </div>
 
       <button className="button" disabled={isPending} onClick={handleSubmit} type="button">
         {isPending ? "Preparing..." : verifyButtonLabel}

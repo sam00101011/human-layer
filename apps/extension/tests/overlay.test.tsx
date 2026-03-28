@@ -12,6 +12,7 @@ const baseProps = {
   lookup: null,
   onDraftCommentChange: vi.fn(),
   onFollow: vi.fn(),
+  onOpenFeedback: vi.fn(),
   onOpenPage: vi.fn(),
   onOpenProfile: vi.fn(),
   onRetry: vi.fn(),
@@ -47,18 +48,28 @@ describe("OverlayView", () => {
 
   it("renders a retry shell when lookup fails", () => {
     const onRetry = vi.fn();
-    renderOverlay(null, { onRetry, surfaceState: "error" });
+    const onOpenFeedback = vi.fn();
+    renderOverlay(null, { onRetry, onOpenFeedback, surfaceState: "error" });
 
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    fireEvent.click(screen.getByRole("button", { name: "Feedback" }));
 
     expect(screen.getByText("Human Layer is having trouble loading right now.")).toBeTruthy();
     expect(onRetry).toHaveBeenCalled();
+    expect(onOpenFeedback).toHaveBeenCalled();
   });
 
   it("renders the unsupported state", () => {
-    renderOverlay({ supported: false, state: "unsupported", page: null, thread: null });
+    const onOpenFeedback = vi.fn();
+    const view = renderOverlay(
+      { supported: false, state: "unsupported", page: null, thread: null },
+      { onOpenFeedback }
+    );
+    const scope = within(view.container);
 
     expect(screen.getByText("This page is outside the Phase 0 supported surface list.")).toBeTruthy();
+    fireEvent.click(scope.getByRole("button", { name: "Feedback" }));
+    expect(onOpenFeedback).toHaveBeenCalled();
   });
 
   it("renders the empty zero-state", () => {

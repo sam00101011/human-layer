@@ -1,0 +1,25 @@
+name: Production Guardrails
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 * * * *"
+
+jobs:
+  production-uptime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run production uptime check
+        env:
+          HL_UPTIME_BASE_URL: ${{ vars.HL_UPTIME_BASE_URL }}
+        run: node scripts/check-production-uptime.mjs

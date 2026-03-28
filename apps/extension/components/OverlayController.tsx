@@ -6,13 +6,14 @@ import {
   type PageLookupResponse,
   type Verdict
 } from "@human-layer/core";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   attachAuthHandoffListener,
   createChromeTokenStorage,
   getStoredAuthToken
 } from "../lib/auth-handoff";
+import { captureExtensionAnalyticsEvent } from "../lib/analytics";
 import { sendApiProxyRequest } from "../lib/api";
 import { OverlayView } from "./OverlayView";
 
@@ -54,6 +55,7 @@ export function OverlayController({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [saved, setSaved] = useState(false);
   const [followedProfileIds, setFollowedProfileIds] = useState<string[]>([]);
+  const trackedOverlayKeyRef = useRef<string | null>(null);
 
   async function refreshLookup(options?: { replaceShell?: boolean }) {
     if (options?.replaceShell) {
@@ -113,6 +115,14 @@ export function OverlayController({
     );
   }
 
+  function openFeedback() {
+    window.open(
+      `${appUrl}/support?source=extension&contextUrl=${encodeURIComponent(currentUrl)}`,
+      "_blank",
+      "noopener,noreferrer"
+    );
+  }
+
   useEffect(() => {
     return attachAuthHandoffListener({
       appOrigin: new URL(appUrl).origin,
@@ -128,6 +138,40 @@ export function OverlayController({
     if (initialLookup) return;
     void refreshLookup({ replaceShell: true });
   }, [appUrl, currentUrl, initialLookup]);
+
+  useEffect(() => {
+    trackedOverlayKeyRef.current = null;
+  }, [appUrl, currentUrl]);
+
+  useEffect(() => {
+    if (surfaceState !== "ready" || !lookup?.supported || !lookup.page) {
+      return;
+    }
+
+    const overlayKey = [
+      lookup.page.id,
+      lookup.state,
+      lookup.viewer?.profileId ?? "anonymous"
+    ].join(":");
+
+    if (trackedOverlayKeyRef.current === overlayKey) {
+      return;
+    }
+
+    trackedOverlayKeyRef.current = overlayKey;
+    void captureExtensionAnalyticsEvent({
+      appUrl,
+      event: "overlay_opened",
+      properties: {
+        source: "extension",
+        pageId: lookup.page.id,
+        pageKind: lookup.page.pageKind,
+        host: lookup.page.host,
+        state: lookup.state,
+        hasViewer: Boolean(lookup.viewer)
+      }
+    });
+  }, [appUrl, lookup, surfaceState]);
 
   async function getAuthorizedToken(): Promise<string | null> {
     const authToken = await getStoredAuthToken();
@@ -235,6 +279,7 @@ export function OverlayController({
       onFollow={handleFollow}
       onOpenPage={openPage}
       onOpenProfile={openProfile}
+      onOpenFeedback={openFeedback}
       onRetry={() => {
         void refreshLookup({ replaceShell: true });
       }}
