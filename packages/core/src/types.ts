@@ -185,6 +185,7 @@ export type TopHumanTake = {
   body: string;
   helpfulCount: number;
   createdAt: string;
+  reputation?: ContributorReputation | null;
 } | null;
 
 export type CommentProjection = NonNullable<TopHumanTake>;
@@ -229,10 +230,32 @@ export type ProfileActivityItem = {
   verdict?: Verdict;
 };
 
+export type ContributorReputationLevel =
+  | "new_voice"
+  | "emerging_signal"
+  | "steady_contributor"
+  | "consistently_useful";
+
+export type ContributorReputationMetrics = {
+  publicTakeCount: number;
+  helpfulVoteCount: number;
+  followerCount: number;
+  distinctPageCount: number;
+  verdictCount: number;
+};
+
+export type ContributorReputation = {
+  level: ContributorReputationLevel;
+  label: string;
+  description: string;
+  evidence: string[];
+};
+
 export type ProfileSnapshot = {
   id: string;
   handle: string;
   verifiedHuman: boolean;
+  reputation?: ContributorReputation;
   interestTags: InterestTag[];
   counts: ProfileCounts;
   recentComments: ProfileCommentSummary[];

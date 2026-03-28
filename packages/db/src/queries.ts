@@ -4,6 +4,9 @@ import {
   INTEREST_TAGS,
   MAX_PROFILE_INTERESTS,
   SUPPORTED_DOMAIN_RULES,
+  summarizeContributorReputation,
+  type ContributorReputation,
+  type ContributorReputationMetrics,
   type InterestTag,
   type NormalizedPageCandidate,
   type ProfileActivityItem,
@@ -97,12 +100,14 @@ export type DiscoveryTake = {
   pageKind: PageSummary["pageKind"];
   pageTitle: string;
   canonicalUrl: string;
+  reputation?: ContributorReputation;
 };
 
 export type DiscoveryProfile = {
   id: string;
   handle: string;
   verifiedHuman: boolean;
+  reputation: ContributorReputation;
   interestTags: InterestTag[];
   commentCount: number;
   followerCount: number;
@@ -156,6 +161,87 @@ function mapStoredProfile(row: {
 
 function formatInterestList(tags: InterestTag[]) {
   return tags.slice(0, 3).join(", ");
+}
+
+function defaultContributorReputation() {
+  return summarizeContributorReputation({
+    publicTakeCount: 0,
+    helpfulVoteCount: 0,
+    followerCount: 0,
+    distinctPageCount: 0,
+    verdictCount: 0
+  });
+}
+
+async function getContributorReputationMap(profileIds: string[]): Promise<Map<string, ContributorReputation>> {
+  const uniqueProfileIds = [...new Set(profileIds)];
+  if (uniqueProfileIds.length === 0) {
+    return new Map();
+  }
+
+  const [commentRows, helpfulRows, distinctPageRows, followerRows, verdictRows] = await Promise.all([
+    db
+      .select({
+        profileId: comments.profileId,
+        count: sql<number>`count(*)::int`
+      })
+      .from(comments)
+      .where(and(inArray(comments.profileId, uniqueProfileIds), eq(comments.hidden, false)))
+      .groupBy(comments.profileId),
+    db
+      .select({
+        profileId: comments.profileId,
+        count: sql<number>`count(${commentHelpfulVotes.id})::int`
+      })
+      .from(comments)
+      .leftJoin(commentHelpfulVotes, eq(commentHelpfulVotes.commentId, comments.id))
+      .where(and(inArray(comments.profileId, uniqueProfileIds), eq(comments.hidden, false)))
+      .groupBy(comments.profileId),
+    db
+      .select({
+        profileId: comments.profileId,
+        count: sql<number>`count(distinct ${comments.pageId})::int`
+      })
+      .from(comments)
+      .where(and(inArray(comments.profileId, uniqueProfileIds), eq(comments.hidden, false)))
+      .groupBy(comments.profileId),
+    db
+      .select({
+        profileId: follows.followeeProfileId,
+        count: sql<number>`count(*)::int`
+      })
+      .from(follows)
+      .where(inArray(follows.followeeProfileId, uniqueProfileIds))
+      .groupBy(follows.followeeProfileId),
+    db
+      .select({
+        profileId: verdicts.profileId,
+        count: sql<number>`count(*)::int`
+      })
+      .from(verdicts)
+      .where(inArray(verdicts.profileId, uniqueProfileIds))
+      .groupBy(verdicts.profileId)
+  ]);
+
+  const commentMap = new Map(commentRows.map((row) => [row.profileId, row.count]));
+  const helpfulMap = new Map(helpfulRows.map((row) => [row.profileId, row.count]));
+  const distinctPageMap = new Map(distinctPageRows.map((row) => [row.profileId, row.count]));
+  const followerMap = new Map(followerRows.map((row) => [row.profileId, row.count]));
+  const verdictMap = new Map(verdictRows.map((row) => [row.profileId, row.count]));
+
+  return new Map(
+    uniqueProfileIds.map((profileId) => {
+      const metrics: ContributorReputationMetrics = {
+        publicTakeCount: commentMap.get(profileId) ?? 0,
+        helpfulVoteCount: helpfulMap.get(profileId) ?? 0,
+        followerCount: followerMap.get(profileId) ?? 0,
+        distinctPageCount: distinctPageMap.get(profileId) ?? 0,
+        verdictCount: verdictMap.get(profileId) ?? 0
+      };
+
+      return [profileId, summarizeContributorReputation(metrics)];
+    })
+  );
 }
 
 export async function seedSupportedDomainsManifest(): Promise<void> {
@@ -319,6 +405,7 @@ export async function getPageThreadSnapshot(pageId: string): Promise<ThreadSnaps
           .groupBy(commentHelpfulVotes.commentId);
 
   const helpfulCountMap = new Map(helpfulRows.map((row) => [row.commentId, row.count]));
+  const reputationMap = await getContributorReputationMap(recentComments.map((comment) => comment.profileId));
 
   const projectedComments = recentComments.map((comment) => ({
     commentId: comment.commentId,
@@ -326,7 +413,8 @@ export async function getPageThreadSnapshot(pageId: string): Promise<ThreadSnaps
     profileHandle: comment.profileHandle,
     body: comment.body,
     helpfulCount: helpfulCountMap.get(comment.commentId) ?? 0,
-    createdAt: comment.createdAt.toISOString()
+    createdAt: comment.createdAt.toISOString(),
+    reputation: reputationMap.get(comment.profileId) ?? defaultContributorReputation()
   }));
 
   return {
@@ -463,6 +551,8 @@ export async function getRecommendedTakes(limit = 6): Promise<DiscoveryTake[]> {
     .orderBy(desc(sql<number>`count(${commentHelpfulVotes.id})::int`), desc(comments.createdAt))
     .limit(limit);
 
+  const reputationMap = await getContributorReputationMap(rows.map((row) => row.profileId));
+
   return rows.map((row) => ({
     commentId: row.commentId,
     body: row.body,
@@ -473,7 +563,8 @@ export async function getRecommendedTakes(limit = 6): Promise<DiscoveryTake[]> {
     pageId: row.pageId,
     pageKind: row.pageKind as PageSummary["pageKind"],
     pageTitle: row.pageTitle,
-    canonicalUrl: row.canonicalUrl
+    canonicalUrl: row.canonicalUrl,
+    reputation: reputationMap.get(row.profileId) ?? defaultContributorReputation()
   }));
 }
 
@@ -520,8 +611,11 @@ export async function getPeopleToFollow(limit = 6, viewerProfileId?: string): Pr
 
   const commentCountMap = new Map(commentRows.map((row) => [row.profileId, row.count]));
   const followerCountMap = new Map(followerRows.map((row) => [row.profileId, row.count]));
+  const searchProfileReputationMap = await getContributorReputationMap(profileRows.map((row) => row.id));
   const followedIds = new Set(followedRows.map((row) => row.followeeProfileId));
   const viewerInterestTags = viewerRow ? coerceInterestTags(viewerRow.interestTags) : [];
+
+  const reputationMap = await getContributorReputationMap(profileRows.map((row) => row.id));
 
   return profileRows
     .filter((row) => Boolean(row.nullifierHash))
@@ -532,22 +626,21 @@ export async function getPeopleToFollow(limit = 6, viewerProfileId?: string): Pr
       const commentCount = commentCountMap.get(row.id) ?? 0;
       const followerCount = followerCountMap.get(row.id) ?? 0;
       const verifiedHuman = Boolean(row.nullifierHash);
+      const reputation = reputationMap.get(row.id) ?? defaultContributorReputation();
       const score = (verifiedHuman ? 6 : 0) + commentCount * 3 + followerCount * 2 + sharedInterestCount * 4;
       const reasonParts = [];
 
       if (sharedInterestCount > 0) {
         reasonParts.push(`Shared interests in ${formatInterestList(interestTags)}`);
-      } else if (interestTags.length > 0) {
-        reasonParts.push(`Active around ${formatInterestList(interestTags)}`);
       }
 
-      reasonParts.push(`${commentCount} public take${commentCount === 1 ? "" : "s"}`);
-      reasonParts.push(`${followerCount} follower${followerCount === 1 ? "" : "s"}`);
+      reasonParts.push(reputation.description);
 
       return {
         id: row.id,
         handle: row.handle,
         verifiedHuman,
+        reputation,
         interestTags,
         commentCount,
         followerCount,
@@ -651,6 +744,9 @@ export async function searchDiscovery(query: string, limit = 6): Promise<Discove
 
   const commentCountMap = new Map(commentRows.map((row) => [row.profileId, row.count]));
   const followerCountMap = new Map(followerRows.map((row) => [row.profileId, row.count]));
+  const searchProfileReputationMap = await getContributorReputationMap(
+    profileRows.map((row) => row.id)
+  );
 
   const pagesWithContext = await Promise.all(
     pageRows.map(async (page) => {
@@ -699,17 +795,19 @@ export async function searchDiscovery(query: string, limit = 6): Promise<Discove
       const interestTags = coerceInterestTags(row.interestTags);
       const commentCount = commentCountMap.get(row.id) ?? 0;
       const followerCount = followerCountMap.get(row.id) ?? 0;
+      const reputation = searchProfileReputationMap.get(row.id) ?? defaultContributorReputation();
       return {
         id: row.id,
         handle: row.handle,
         verifiedHuman: Boolean(row.nullifierHash),
+        reputation,
         interestTags,
         commentCount,
         followerCount,
         sharedInterestCount: 0,
         reason: interestTags.length
-          ? `Active around ${formatInterestList(interestTags)} • ${commentCount} public takes`
-          : `${commentCount} public takes • ${followerCount} followers`
+          ? `${reputation.description} • Active around ${formatInterestList(interestTags)}`
+          : reputation.description
       } satisfies DiscoveryProfile;
     })
   };
@@ -1129,20 +1227,27 @@ export async function getBookmarkedPagesForProfile(
 }
 
 async function buildProfileSnapshot(profile: StoredProfile): Promise<ProfileSnapshot> {
-  const [counts, recentComments, savedPages, activity] = await Promise.all([
+  const [counts, recentComments, savedPages, activity, reputationMap] = await Promise.all([
     getProfileCounts(profile.id),
     getRecentProfileComments(profile.id),
     getSavedPages(profile.id),
-    getProfileActivity(profile.id)
+    getProfileActivity(profile.id),
+    getContributorReputationMap([profile.id])
   ]);
+
+  const reputation = reputationMap.get(profile.id) ?? defaultContributorReputation();
 
   return {
     id: profile.id,
     handle: profile.handle,
     verifiedHuman: Boolean(profile.nullifierHash),
+    reputation,
     interestTags: profile.interestTags,
     counts,
-    recentComments,
+    recentComments: recentComments.map((comment) => ({
+      ...comment,
+      reputation
+    })),
     savedPages,
     activity,
     createdAt: profile.createdAt

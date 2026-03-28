@@ -27,11 +27,19 @@ function formatActivityType(value: "comment" | "verdict" | "bookmark") {
   return "Bookmark";
 }
 
+function getReputationBadgeClass(level: string | undefined) {
+  if (!level) return "reputation-badge";
+  return `reputation-badge reputation-badge--${level}`;
+}
+
 function buildTrustSignals(profile: NonNullable<Awaited<ReturnType<typeof getProfileSnapshotByHandle>>>) {
   const signals = [
     profile.verifiedHuman
       ? "Verified-human write access is active for this pseudonymous profile."
       : "Verification is not active yet, so trust is limited to public activity only.",
+    profile.reputation
+      ? profile.reputation.description
+      : "This profile does not have enough public signal yet for a contributor read.",
     `${profile.counts.comments} public take${profile.counts.comments === 1 ? "" : "s"} and ${profile.counts.saves} bookmark${profile.counts.saves === 1 ? "" : "s"} are visible on this profile.`,
     profile.activity?.length
       ? "Contribution history is timestamped below so readers can inspect how this profile participates over time."
@@ -64,6 +72,11 @@ export default async function ProfilePage(props: {
           <div className="stack compact">
             <div className="chip-row">
               <span className="pill">{profile.verifiedHuman ? "Verified human" : "Profile"}</span>
+              {profile.reputation ? (
+                <span className={getReputationBadgeClass(profile.reputation.level)}>
+                  {profile.reputation.label}
+                </span>
+              ) : null}
               <span className="trust-badge">Pseudonymous</span>
               <span className="trust-badge">{activity.length > 0 ? "Activity visible" : "Public identity"}</span>
               <span className="eyebrow">Joined {formatDate(profile.createdAt)}</span>
@@ -106,6 +119,29 @@ export default async function ProfilePage(props: {
           </div>
         </div>
       </section>
+
+      {profile.reputation ? (
+        <section className="card stack">
+          <div className="section-header">
+            <h2>Contributor signal</h2>
+            <span className="muted">A qualitative read on whether this profile has been useful over time.</span>
+          </div>
+          <article className="trust-card">
+            <div className="chip-row">
+              <span className={getReputationBadgeClass(profile.reputation.level)}>
+                {profile.reputation.label}
+              </span>
+              {profile.verifiedHuman ? <span className="trust-badge">Verified human</span> : null}
+            </div>
+            <p>{profile.reputation.description}</p>
+            <ul className="signal-list">
+              {profile.reputation.evidence.map((signal) => (
+                <li key={signal}>{signal}</li>
+              ))}
+            </ul>
+          </article>
+        </section>
+      ) : null}
 
       <section className="card stack">
         <div className="section-header">
@@ -173,6 +209,11 @@ export default async function ProfilePage(props: {
                 <div className="stack compact">
                   <div className="chip-row">
                     <span className="trust-badge">Verified take</span>
+                    {comment.reputation ? (
+                      <span className={getReputationBadgeClass(comment.reputation.level)}>
+                        {comment.reputation.label}
+                      </span>
+                    ) : null}
                     <strong>{comment.pageTitle}</strong>
                   </div>
                   <p className="muted">

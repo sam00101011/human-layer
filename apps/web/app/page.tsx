@@ -17,6 +17,11 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(new Date(value));
 }
 
+function getReputationBadgeClass(level: string | undefined) {
+  if (!level) return "reputation-badge";
+  return `reputation-badge reputation-badge--${level}`;
+}
+
 export default async function HomePage(props: {
   searchParams?: Promise<{ q?: string }>;
 }) {
@@ -137,6 +142,11 @@ export default async function HomePage(props: {
                       <article className="discovery-card" key={take.commentId}>
                         <div className="chip-row">
                           <span className="trust-badge">Verified take</span>
+                          {take.reputation ? (
+                            <span className={getReputationBadgeClass(take.reputation.level)}>
+                              {take.reputation.label}
+                            </span>
+                          ) : null}
                           <Link className="inline-link" href={`/profiles/${take.profileHandle}`}>
                             @{take.profileHandle}
                           </Link>
@@ -168,6 +178,9 @@ export default async function HomePage(props: {
                       <article className="discovery-card" key={profile.id}>
                         <div className="chip-row">
                           <span className="trust-badge">{profile.verifiedHuman ? "Verified human" : "Profile"}</span>
+                          <span className={getReputationBadgeClass(profile.reputation.level)}>
+                            {profile.reputation.label}
+                          </span>
                           {profile.interestTags.map((tag) => (
                             <span className="chip" key={tag}>
                               {tag}
@@ -236,6 +249,11 @@ export default async function HomePage(props: {
             <article className="discovery-card" key={take.commentId}>
               <div className="chip-row">
                 <span className="trust-badge">Verified take</span>
+                {take.reputation ? (
+                  <span className={getReputationBadgeClass(take.reputation.level)}>
+                    {take.reputation.label}
+                  </span>
+                ) : null}
                 <Link className="inline-link" href={`/profiles/${take.profileHandle}`}>
                   @{take.profileHandle}
                 </Link>
@@ -268,6 +286,9 @@ export default async function HomePage(props: {
             <article className="discovery-card" key={profile.id}>
               <div className="chip-row">
                 <span className="trust-badge">{profile.verifiedHuman ? "Verified human" : "Profile"}</span>
+                <span className={getReputationBadgeClass(profile.reputation.level)}>
+                  {profile.reputation.label}
+                </span>
                 {profile.interestTags.map((tag) => (
                   <span className="chip" key={tag}>
                     {tag}

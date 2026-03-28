@@ -85,6 +85,10 @@ function renderProfileHandle(props: {
   );
 }
 
+function renderReputationBadge(label: string) {
+  return <span style={miniTrustChipStyle}>{label}</span>;
+}
+
 function renderVerdictCounts(lookup: PageLookupResponse) {
   if (!lookup.thread) return null;
 
@@ -358,7 +362,12 @@ export function OverlayView(props: OverlayViewProps) {
             <span style={sectionLabelStyle}>Top human take</span>
             {lookup.thread.topHumanTake ? (
               <div style={{ display: "grid", gap: 6 }}>
-                <span style={miniTrustChipStyle}>Verified take</span>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  <span style={miniTrustChipStyle}>Verified take</span>
+                  {lookup.thread.topHumanTake.reputation
+                    ? renderReputationBadge(lookup.thread.topHumanTake.reputation.label)
+                    : null}
+                </div>
                 {renderProfileHandle({
                   handle: lookup.thread.topHumanTake.profileHandle,
                   onOpenProfile: props.onOpenProfile
@@ -392,7 +401,10 @@ export function OverlayView(props: OverlayViewProps) {
             <span style={sectionLabelStyle}>Recent verified takes</span>
             {lookup.thread.recentComments.map((comment) => (
               <div key={comment.commentId} style={commentStyle}>
-                <span style={miniTrustChipStyle}>Verified take</span>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  <span style={miniTrustChipStyle}>Verified take</span>
+                  {comment.reputation ? renderReputationBadge(comment.reputation.label) : null}
+                </div>
                 {renderProfileHandle({
                   handle: comment.profileHandle,
                   onOpenProfile: props.onOpenProfile

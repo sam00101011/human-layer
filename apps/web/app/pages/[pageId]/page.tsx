@@ -13,6 +13,11 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(new Date(value));
 }
 
+function getReputationBadgeClass(level: string | undefined) {
+  if (!level) return "reputation-badge";
+  return `reputation-badge reputation-badge--${level}`;
+}
+
 export default async function HumanLayerPage(props: {
   params: Promise<{ pageId: string }>;
 }) {
@@ -104,6 +109,11 @@ export default async function HumanLayerPage(props: {
             <div className="comment-meta">
               <div className="chip-row">
                 <span className="trust-badge">Verified take</span>
+                {thread.topHumanTake.reputation ? (
+                  <span className={getReputationBadgeClass(thread.topHumanTake.reputation.level)}>
+                    {thread.topHumanTake.reputation.label}
+                  </span>
+                ) : null}
                 <Link className="inline-link" href={`/profiles/${thread.topHumanTake.profileHandle}`}>
                   @{thread.topHumanTake.profileHandle}
                 </Link>
@@ -148,6 +158,11 @@ export default async function HumanLayerPage(props: {
               <div className="comment-meta">
                 <div className="chip-row">
                   <span className="trust-badge">Verified take</span>
+                  {comment.reputation ? (
+                    <span className={getReputationBadgeClass(comment.reputation.level)}>
+                      {comment.reputation.label}
+                    </span>
+                  ) : null}
                   <Link className="inline-link" href={`/profiles/${comment.profileHandle}`}>
                     @{comment.profileHandle}
                   </Link>
