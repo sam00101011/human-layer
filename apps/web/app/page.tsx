@@ -14,6 +14,7 @@ import {
 
 import { FollowProfileButton } from "../components/follow-profile-button";
 import { HelpfulButton } from "../components/helpful-button";
+import { ProfileSafetyActions } from "../components/profile-safety-actions";
 import { getAuthenticatedProfileFromCookies } from "./lib/auth";
 
 function formatPageKind(pageKind: string) {
@@ -48,12 +49,12 @@ export default async function HomePage(props: {
     followedBookmarks,
     contributorsInInterests
   ] = await Promise.all([
-    getTrendingPages(6),
-    getRecommendedTakes(6),
+    getTrendingPages(6, viewer?.id),
+    getRecommendedTakes(6, viewer?.id),
     viewer ? getFollowedProfileActivity(viewer.id, 6) : Promise.resolve([]),
     getPeopleToFollow(6, viewer?.id),
     query ? searchDiscovery(query, 5) : Promise.resolve({ pages: [], takes: [], profiles: [] }),
-    Promise.all(featuredTopics.map((topic) => getTopicSurface(topic, 3))),
+    Promise.all(featuredTopics.map((topic) => getTopicSurface(topic, 3, viewer?.id))),
     viewer ? getPeopleSimilarToFollowing(viewer.id, 6) : Promise.resolve([]),
     viewer ? getPagesBookmarkedByFollowedProfiles(viewer.id, 6) : Promise.resolve([]),
     viewer ? getContributorsActiveInViewerInterests(viewer.id, 6) : Promise.resolve([])
@@ -268,10 +269,9 @@ export default async function HomePage(props: {
                 </div>
               </div>
               <p className="muted">
-                {surface.trendingPages[0]
-                  ? `Trending now: ${surface.trendingPages[0].title}`
-                  : "This topic is ready for its first page signal."}
+                {surface.whyNow}
               </p>
+              {surface.viewerReason ? <p className="muted small-copy">{surface.viewerReason}</p> : null}
               <div className="chip-row">
                 {surface.relatedTopics.slice(0, 3).map((tag) => (
                   <Link className="chip" href={`/topics/${tag}`} key={tag}>
@@ -307,6 +307,7 @@ export default async function HomePage(props: {
               </div>
               <strong>{page.title}</strong>
               <p className="muted">{page.summary}</p>
+              <p className="muted small-copy">{page.reason}</p>
               <p className="muted">
                 {page.commentCount} takes • {page.verdictCount} verdicts • {page.bookmarkCount} bookmarks
               </p>
@@ -344,10 +345,16 @@ export default async function HomePage(props: {
               </div>
               <strong>{take.pageTitle}</strong>
               <p>{take.body}</p>
+              <p className="muted small-copy">{take.reason}</p>
               <p className="muted">
                 Helpful {take.helpfulCount} • {formatDate(take.createdAt)} • {formatPageKind(take.pageKind)}
               </p>
               <HelpfulButton commentId={take.commentId} initialCount={take.helpfulCount} />
+              <ProfileSafetyActions
+                profileHandle={take.profileHandle}
+                profileId={take.profileId}
+                viewerProfileId={viewer?.id}
+              />
               <div className="link-row">
                 <Link className="inline-link" href={`/pages/${take.pageId}`}>
                   Open Human Layer page
@@ -393,6 +400,11 @@ export default async function HomePage(props: {
                       {take.reason} • Helpful {take.helpfulCount} • {formatDate(take.createdAt)}
                     </p>
                     <HelpfulButton commentId={take.commentId} initialCount={take.helpfulCount} />
+                    <ProfileSafetyActions
+                      profileHandle={take.authorHandle}
+                      profileId={take.authorProfileId}
+                      viewerProfileId={viewer?.id}
+                    />
                     <div className="link-row">
                       <Link className="inline-link" href={`/pages/${take.pageId}`}>
                         Open Human Layer page
@@ -475,6 +487,11 @@ export default async function HomePage(props: {
                       </Link>
                       <FollowProfileButton profileId={profile.id} />
                     </div>
+                    <ProfileSafetyActions
+                      profileHandle={profile.handle}
+                      profileId={profile.id}
+                      viewerProfileId={viewer?.id}
+                    />
                   </article>
                 ))}
               </div>
@@ -511,6 +528,11 @@ export default async function HomePage(props: {
                       </Link>
                       <FollowProfileButton profileId={profile.id} />
                     </div>
+                    <ProfileSafetyActions
+                      profileHandle={profile.handle}
+                      profileId={profile.id}
+                      viewerProfileId={viewer?.id}
+                    />
                   </article>
                 ))}
               </div>
@@ -546,6 +568,11 @@ export default async function HomePage(props: {
                 </Link>
                 {viewer ? <FollowProfileButton profileId={profile.id} /> : null}
               </div>
+              <ProfileSafetyActions
+                profileHandle={profile.handle}
+                profileId={profile.id}
+                viewerProfileId={viewer?.id}
+              />
             </article>
           ))}
         </div>

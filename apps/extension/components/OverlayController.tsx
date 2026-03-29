@@ -2,6 +2,7 @@
 
 import {
   type BookmarkedPagePreview,
+  type CommentReportReasonCode,
   type ExtensionDashboardResponse,
   type InterestTag,
   type NotificationPreferences,
@@ -47,7 +48,9 @@ type PendingAction =
   | { type: "follow_profile"; profileId: string }
   | { type: "follow_topic"; topic: InterestTag }
   | { type: "helpful_comment"; commentId: string }
-  | { type: "report_comment"; commentId: string }
+  | { type: "report_comment"; commentId: string; reasonCode: CommentReportReasonCode }
+  | { type: "mute_profile"; profileId: string; profileHandle: string }
+  | { type: "block_profile"; profileId: string; profileHandle: string }
   | { type: "mute_page" }
   | { type: "update_notification_preferences"; preferences: NotificationPreferences }
   | null;
@@ -82,6 +85,8 @@ export function OverlayController({
   const [helpfulCountsByCommentId, setHelpfulCountsByCommentId] = useState<Record<string, number>>({});
   const [helpfulSubmittingCommentIds, setHelpfulSubmittingCommentIds] = useState<string[]>([]);
   const [mutedCurrentPage, setMutedCurrentPage] = useState(false);
+  const [mutedProfileIds, setMutedProfileIds] = useState<string[]>([]);
+  const [blockedProfileIds, setBlockedProfileIds] = useState<string[]>([]);
   const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences | null>(null);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [reportedCommentIds, setReportedCommentIds] = useState<string[]>([]);
@@ -216,7 +221,7 @@ export function OverlayController({
       }
 
       if (queuedAction.type === "report_comment") {
-        await handleReportComment(queuedAction.commentId);
+        await handleReportComment(queuedAction.commentId, queuedAction.reasonCode);
         return;
       }
 
@@ -227,6 +232,16 @@ export function OverlayController({
 
       if (queuedAction.type === "mute_page") {
         await handleMuteCurrentPage();
+        return;
+      }
+
+      if (queuedAction.type === "mute_profile") {
+        await handleMuteProfile(queuedAction.profileId, queuedAction.profileHandle);
+        return;
+      }
+
+      if (queuedAction.type === "block_profile") {
+        await handleBlockProfile(queuedAction.profileId, queuedAction.profileHandle);
         return;
       }
 
@@ -258,6 +273,8 @@ export function OverlayController({
     setHelpfulCountsByCommentId({});
     setHelpfulSubmittingCommentIds([]);
     setMutedCurrentPage(false);
+    setMutedProfileIds([]);
+    setBlockedProfileIds([]);
     setNotificationPreferences(null);
     setUnreadNotificationCount(0);
   }, [appUrl, currentUrl]);
@@ -531,10 +548,10 @@ export function OverlayController({
     }
   }
 
-  async function handleReportComment(commentId: string) {
+  async function handleReportComment(commentId: string, reasonCode: CommentReportReasonCode) {
     const authToken = await getAuthorizedToken();
     if (!authToken) {
-      setPendingAction({ type: "report_comment", commentId });
+      setPendingAction({ type: "report_comment", commentId, reasonCode });
       setStatusMessage("Finish verification to report this comment.");
       openVerify();
       return;
@@ -542,12 +559,66 @@ export function OverlayController({
 
     setIsSubmitting(true);
     try {
-      const ok = await postJson(`${appUrl}/api/comments/${commentId}/report`, {
-        reasonCode: "needs_review"
-      }, authToken);
+      const ok = await postJson(
+        `${appUrl}/api/comments/${commentId}/report`,
+        { reasonCode },
+        authToken
+      );
       if (!ok) return;
       setReportedCommentIds((current) => current.includes(commentId) ? current : [...current, commentId]);
       setStatusMessage("Comment reported for review.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleMuteProfile(profileId: string, profileHandle: string) {
+    const authToken = await getAuthorizedToken();
+    if (!authToken) {
+      setPendingAction({ type: "mute_profile", profileId, profileHandle });
+      setStatusMessage(`Finish verification to mute @${profileHandle}.`);
+      openVerify();
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const ok = await postJson(
+        `${appUrl}/api/notifications/mute`,
+        { mutedProfileId: profileId },
+        authToken
+      );
+      if (!ok) return;
+      setMutedProfileIds((current) => (current.includes(profileId) ? current : [...current, profileId]));
+      setStatusMessage(`Muted @${profileHandle} from your feed.`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleBlockProfile(profileId: string, profileHandle: string) {
+    const confirmed = window.confirm(
+      `Block @${profileHandle}? Their takes will stop appearing in your signed-in feed and page reads.`
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    const authToken = await getAuthorizedToken();
+    if (!authToken) {
+      setPendingAction({ type: "block_profile", profileId, profileHandle });
+      setStatusMessage(`Finish verification to block @${profileHandle}.`);
+      openVerify();
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const ok = await postJson(`${appUrl}/api/profiles/${profileId}/block`, {}, authToken);
+      if (!ok) return;
+      setBlockedProfileIds((current) => (current.includes(profileId) ? current : [...current, profileId]));
+      setStatusMessage(`Blocked @${profileHandle}.`);
+      await refreshLookup();
     } finally {
       setIsSubmitting(false);
     }
@@ -615,10 +686,12 @@ export function OverlayController({
       helpfulCommentIds={helpfulCommentIds}
       helpfulCountsByCommentId={helpfulCountsByCommentId}
       helpfulSubmittingCommentIds={helpfulSubmittingCommentIds}
+      blockedProfileIds={blockedProfileIds}
       isCurrentPageMuted={mutedCurrentPage}
       isSaved={saved}
       isSubmitting={isSubmitting}
       lookup={lookup}
+      mutedProfileIds={mutedProfileIds}
       notificationPreferences={notificationPreferences}
       onDraftCommentChange={setDraftComment}
       onFollow={handleFollow}
@@ -630,7 +703,9 @@ export function OverlayController({
       onOpenProfile={openProfile}
       onOpenTopic={openTopic}
       onOpenFeedback={openFeedback}
+      onBlockProfile={handleBlockProfile}
       onMuteCurrentPage={handleMuteCurrentPage}
+      onMuteProfile={handleMuteProfile}
       onReportComment={handleReportComment}
       onRetry={() => {
         void refreshLookup({ replaceShell: true });

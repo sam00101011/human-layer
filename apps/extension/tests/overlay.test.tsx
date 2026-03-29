@@ -6,6 +6,7 @@ import { OverlayView } from "../components/OverlayView";
 
 const baseProps = {
   bookmarks: [],
+  blockedProfileIds: [],
   draftComment: "",
   followedProfileIds: [],
   followedTopics: [],
@@ -16,11 +17,14 @@ const baseProps = {
   isSaved: false,
   isSubmitting: false,
   lookup: null,
+  mutedProfileIds: [],
   notificationPreferences: null,
+  onBlockProfile: vi.fn(),
   onDraftCommentChange: vi.fn(),
   onFollow: vi.fn(),
   onFollowTopic: vi.fn(),
   onHelpful: vi.fn(),
+  onMuteProfile: vi.fn(),
   onOpenBookmarks: vi.fn(),
   onOpenFeedback: vi.fn(),
   onOpenNotifications: vi.fn(),
@@ -372,6 +376,100 @@ describe("OverlayView", () => {
 
     fireEvent.click(within(view.container).getByRole("button", { name: "Mute this page" }));
     expect(onMuteCurrentPage).toHaveBeenCalled();
+  });
+
+  it("shows report categories in the overlay and forwards the selected reason", () => {
+    const onReportComment = vi.fn();
+
+    const view = renderOverlay(
+      {
+        supported: true,
+        state: "active",
+        page: {
+          id: "page-1",
+          pageKind: "github_repo",
+          canonicalUrl: "https://github.com/vercel/next.js",
+          canonicalKey: "https://github.com/vercel/next.js",
+          host: "github.com",
+          title: "vercel/next.js"
+        },
+        thread: {
+          verdictCounts: {
+            useful: 1,
+            misleading: 0,
+            outdated: 0,
+            scam: 0
+          },
+          topHumanTake: {
+            commentId: "c1",
+            profileId: "profile-1",
+            profileHandle: "demo_builder",
+            body: "Worth the read.",
+            helpfulCount: 4,
+            createdAt: "2026-03-28T00:00:00.000Z"
+          },
+          recentComments: []
+        },
+        viewer: {
+          profileId: "viewer-1",
+          handle: "viewer"
+        }
+      },
+      { onReportComment }
+    );
+
+    fireEvent.click(within(view.container).getByRole("button", { name: "Report" }));
+    fireEvent.click(within(view.container).getByRole("button", { name: /Scam or fraud/ }));
+
+    expect(onReportComment).toHaveBeenCalledWith("c1", "scam");
+  });
+
+  it("lets people mute and block another author directly from the overlay", () => {
+    const onMuteProfile = vi.fn();
+    const onBlockProfile = vi.fn();
+
+    const view = renderOverlay(
+      {
+        supported: true,
+        state: "active",
+        page: {
+          id: "page-1",
+          pageKind: "github_repo",
+          canonicalUrl: "https://github.com/vercel/next.js",
+          canonicalKey: "https://github.com/vercel/next.js",
+          host: "github.com",
+          title: "vercel/next.js"
+        },
+        thread: {
+          verdictCounts: {
+            useful: 1,
+            misleading: 0,
+            outdated: 0,
+            scam: 0
+          },
+          topHumanTake: {
+            commentId: "c1",
+            profileId: "profile-1",
+            profileHandle: "demo_builder",
+            body: "Worth the read.",
+            helpfulCount: 4,
+            createdAt: "2026-03-28T00:00:00.000Z"
+          },
+          recentComments: []
+        },
+        viewer: {
+          profileId: "viewer-1",
+          handle: "viewer"
+        }
+      },
+      { onBlockProfile, onMuteProfile }
+    );
+
+    fireEvent.click(within(view.container).getByRole("button", { name: "Mute @demo_builder" }));
+    fireEvent.click(within(view.container).getByRole("button", { name: "Block @demo_builder" }));
+
+    expect(onMuteProfile).toHaveBeenCalledWith("profile-1", "demo_builder");
+    expect(onBlockProfile).toHaveBeenCalledWith("profile-1", "demo_builder");
   });
 
   it("opens the page and profile links from the overlay", () => {

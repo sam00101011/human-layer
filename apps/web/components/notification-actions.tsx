@@ -89,6 +89,22 @@ export function NotificationActions({
         >
           {status === "profile" ? "Muting..." : `Mute @${mutedHandle}`}
         </button>
+        <button
+          className="inline-action danger"
+          onClick={() => {
+            const confirmed = window.confirm(
+              `Block @${mutedHandle}? Their takes will stop appearing in your signed-in feed and page reads.`
+            );
+            if (!confirmed) {
+              return;
+            }
+
+            void postAction(`/api/profiles/${mutedProfileId}/block`, {}, "block");
+          }}
+          type="button"
+        >
+          {status === "block" ? "Blocking..." : `Block @${mutedHandle}`}
+        </button>
       </div>
       {error ? <span className="muted small-copy">{error}</span> : null}
     </div>

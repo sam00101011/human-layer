@@ -40,6 +40,7 @@ export default async function ModerationPage() {
   const blockedAuthorCount = new Set(
     items.filter((item) => item.authorBlockedAt).map((item) => item.authorProfileId)
   ).size;
+  const urgentCount = items.filter((item) => item.priorityLabel === "urgent").length;
 
   return (
     <div className="page-shell stack">
@@ -65,8 +66,12 @@ export default async function ModerationPage() {
               <span className="muted">Repeat-offender risk</span>
             </div>
             <div className="stat-card">
+              <strong>{urgentCount}</strong>
+              <span className="muted">Urgent queue items</span>
+            </div>
+            <div className="stat-card">
               <strong>{blockedAuthorCount}</strong>
-              <span className="muted">Blocked authors in queue</span>
+              <span className="muted">Blocked authors</span>
             </div>
           </div>
         </div>

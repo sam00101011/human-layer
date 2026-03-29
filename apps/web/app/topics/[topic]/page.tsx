@@ -11,6 +11,7 @@ import { notFound } from "next/navigation";
 import { FollowTopicButton } from "../../../components/follow-topic-button";
 import { FollowProfileButton } from "../../../components/follow-profile-button";
 import { HelpfulButton } from "../../../components/helpful-button";
+import { ProfileSafetyActions } from "../../../components/profile-safety-actions";
 import { getAuthenticatedProfileFromCookies } from "../../lib/auth";
 
 function formatDate(value: string) {
@@ -42,7 +43,7 @@ export default async function TopicPage(props: {
 
   const viewer = await getAuthenticatedProfileFromCookies();
   const [surface, recentTakes, followedTopics, trustedTopicFeed] = await Promise.all([
-    getTopicSurface(topic, 6),
+    getTopicSurface(topic, 6, viewer?.id),
     getRecentTakesForTopic(topic, 6),
     viewer ? getFollowedTopicsForProfile(viewer.id) : Promise.resolve([]),
     viewer ? getTopicFeedFromFollowedProfiles(viewer.id, topic, 6) : Promise.resolve([])
@@ -63,6 +64,8 @@ export default async function TopicPage(props: {
             <div className="stack compact">
               <h1>{surface.label}</h1>
               <p className="muted">{surface.description}</p>
+              <p className="muted small-copy">{surface.whyNow}</p>
+              {surface.viewerReason ? <p className="muted small-copy">{surface.viewerReason}</p> : null}
             </div>
           </div>
           <div className="action-row">
@@ -125,10 +128,16 @@ export default async function TopicPage(props: {
                 </div>
                 <strong>{take.pageTitle}</strong>
                 <p>{take.body}</p>
+                <p className="muted small-copy">{take.reason}</p>
                 <p className="muted">
                   Helpful {take.helpfulCount} • {formatDate(take.createdAt)} • {formatPageKind(take.pageKind)}
                 </p>
                 <HelpfulButton commentId={take.commentId} initialCount={take.helpfulCount} />
+                <ProfileSafetyActions
+                  profileHandle={take.profileHandle}
+                  profileId={take.profileId}
+                  viewerProfileId={viewer?.id}
+                />
                 <div className="link-row">
                   <Link className="inline-link" href={`/pages/${take.pageId}`}>
                     Open Human Layer page
@@ -173,6 +182,11 @@ export default async function TopicPage(props: {
                     Helpful {item.helpfulCount} • {formatDate(item.createdAt)} • {formatPageKind(item.pageKind)}
                   </p>
                   <HelpfulButton commentId={item.commentId} initialCount={item.helpfulCount} />
+                  <ProfileSafetyActions
+                    profileHandle={item.authorHandle}
+                    profileId={item.authorProfileId}
+                    viewerProfileId={viewer?.id}
+                  />
                   <div className="link-row">
                     <Link className="inline-link" href={`/pages/${item.pageId}`}>
                       Open Human Layer page
@@ -209,6 +223,7 @@ export default async function TopicPage(props: {
                 </div>
                 <strong>{page.title}</strong>
                 <p className="muted">{page.summary}</p>
+                <p className="muted small-copy">{page.reason}</p>
                 <p className="muted">
                   {page.commentCount} takes • {page.verdictCount} verdicts • {page.bookmarkCount} bookmarks • {formatPageKind(page.pageKind)}
                 </p>
@@ -250,10 +265,16 @@ export default async function TopicPage(props: {
                 </div>
                 <strong>{take.pageTitle}</strong>
                 <p>{take.body}</p>
+                <p className="muted small-copy">{take.reason}</p>
                 <p className="muted">
                   Helpful {take.helpfulCount} • {formatDate(take.createdAt)} • {formatPageKind(take.pageKind)}
                 </p>
                 <HelpfulButton commentId={take.commentId} initialCount={take.helpfulCount} />
+                <ProfileSafetyActions
+                  profileHandle={take.profileHandle}
+                  profileId={take.profileId}
+                  viewerProfileId={viewer?.id}
+                />
                 <div className="link-row">
                   <Link className="inline-link" href={`/pages/${take.pageId}`}>
                     Open Human Layer page
@@ -298,6 +319,11 @@ export default async function TopicPage(props: {
                   </Link>
                   {viewer ? <FollowProfileButton profileId={profile.id} /> : null}
                 </div>
+                <ProfileSafetyActions
+                  profileHandle={profile.handle}
+                  profileId={profile.id}
+                  viewerProfileId={viewer?.id}
+                />
               </article>
             ))}
           </div>

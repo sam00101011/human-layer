@@ -18,6 +18,23 @@ function formatActionLabel(actionType: string) {
   return actionType.replace(/_/g, " ");
 }
 
+function formatMetadata(metadata: Record<string, unknown>) {
+  const reviewedCommentId =
+    typeof metadata.reviewedCommentId === "string" ? metadata.reviewedCommentId : null;
+  const escalatedFromCommentId =
+    typeof metadata.escalatedFromCommentId === "string" ? metadata.escalatedFromCommentId : null;
+
+  if (escalatedFromCommentId) {
+    return `Escalated from comment ${escalatedFromCommentId}.`;
+  }
+
+  if (reviewedCommentId) {
+    return `Reviewed comment ${reviewedCommentId}.`;
+  }
+
+  return null;
+}
+
 export function ModerationAuditLog({ items }: ModerationAuditLogProps) {
   if (items.length === 0) {
     return <p className="muted">No moderation actions have been recorded yet.</p>;
@@ -44,6 +61,7 @@ export function ModerationAuditLog({ items }: ModerationAuditLogProps) {
           <p className="muted">
             {item.targetHandle ? `Target: @${item.targetHandle}` : "Target handle unavailable"}
           </p>
+          {formatMetadata(item.metadata) ? <p className="muted small-copy">{formatMetadata(item.metadata)}</p> : null}
           {item.note ? <p>{item.note}</p> : null}
         </article>
       ))}

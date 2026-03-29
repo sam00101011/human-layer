@@ -1,10 +1,12 @@
-import type { CSSProperties, ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import {
   buildPageContextSummary,
   explainHumanTakeRecommendation,
+  getCommentReportReasonOptions,
   getInterestTagLabel,
   sortHumanTakes,
   type BookmarkedPagePreview,
+  type CommentReportReasonCode,
   type CommentProjection,
   type InterestTag,
   type NotificationPreferences,
@@ -18,6 +20,7 @@ import type { OverlaySurfaceState } from "./OverlayController";
 
 type OverlayViewProps = {
   bookmarks: BookmarkedPagePreview[];
+  blockedProfileIds: string[];
   draftComment: string;
   followedProfileIds: string[];
   followedTopics: InterestTag[];
@@ -28,11 +31,14 @@ type OverlayViewProps = {
   isSaved: boolean;
   isSubmitting: boolean;
   lookup: PageLookupResponse | null;
+  mutedProfileIds: string[];
   notificationPreferences: NotificationPreferences | null;
+  onBlockProfile(profileId: string, profileHandle: string): void;
   onDraftCommentChange(value: string): void;
   onFollow(profileId: string): void;
   onFollowTopic(topic: InterestTag): void;
   onHelpful(commentId: string): void;
+  onMuteProfile(profileId: string, profileHandle: string): void;
   onOpenBookmarks(): void;
   onOpenFeedback(): void;
   onOpenNotifications(): void;
@@ -40,7 +46,7 @@ type OverlayViewProps = {
   onOpenProfile(handle: string): void;
   onOpenTopic(topic: InterestTag): void;
   onMuteCurrentPage(): void;
-  onReportComment(commentId: string): void;
+  onReportComment(commentId: string, reasonCode: CommentReportReasonCode): void;
   onRetry(): void;
   onSave(): void;
   onSubmitTake(): void;
@@ -254,28 +260,106 @@ function renderFollowButton(props: {
   );
 }
 
+function renderSafetyButtons(props: {
+  blockedProfileIds: string[];
+  isSubmitting: boolean;
+  lookup: PageLookupResponse;
+  mutedProfileIds: string[];
+  onBlockProfile(profileId: string, profileHandle: string): void;
+  onMuteProfile(profileId: string, profileHandle: string): void;
+  profileHandle: string;
+  profileId: string;
+}) {
+  if (!props.lookup.viewer || props.lookup.viewer.profileId === props.profileId) {
+    return null;
+  }
+
+  const blocked = props.blockedProfileIds.includes(props.profileId);
+  const muted = props.mutedProfileIds.includes(props.profileId);
+
+  return (
+    <>
+      <button
+        disabled={props.isSubmitting || muted || blocked}
+        onClick={() => props.onMuteProfile(props.profileId, props.profileHandle)}
+        style={{
+          ...secondaryButtonStyle,
+          padding: "7px 10px",
+          fontSize: 12,
+          opacity: props.isSubmitting || muted || blocked ? 0.6 : 1
+        }}
+        type="button"
+      >
+        {muted ? `Muted @${props.profileHandle}` : `Mute @${props.profileHandle}`}
+      </button>
+      <button
+        disabled={props.isSubmitting || blocked}
+        onClick={() => props.onBlockProfile(props.profileId, props.profileHandle)}
+        style={{
+          ...secondaryButtonStyle,
+          padding: "7px 10px",
+          fontSize: 12,
+          opacity: props.isSubmitting || blocked ? 0.6 : 1
+        }}
+        type="button"
+      >
+        {blocked ? `Blocked @${props.profileHandle}` : `Block @${props.profileHandle}`}
+      </button>
+    </>
+  );
+}
+
 function renderReportButton(props: {
   commentId: string;
+  isOpen: boolean;
   isSubmitting: boolean;
-  onReportComment(commentId: string): void;
+  onReportComment(commentId: string, reasonCode: CommentReportReasonCode): void;
+  onToggle(openCommentId: string | null): void;
   reportedCommentIds: string[];
 }) {
   const alreadyReported = props.reportedCommentIds.includes(props.commentId);
+  const options = getCommentReportReasonOptions();
 
   return (
-    <button
-      disabled={props.isSubmitting || alreadyReported}
-      onClick={() => props.onReportComment(props.commentId)}
-      style={{
-        ...secondaryButtonStyle,
-        padding: "7px 10px",
-        fontSize: 12,
-        opacity: props.isSubmitting || alreadyReported ? 0.6 : 1
-      }}
-      type="button"
-    >
-      {alreadyReported ? "Reported" : props.isSubmitting ? "Reporting..." : "Report"}
-    </button>
+    <div style={{ display: "grid", gap: 6 }}>
+      <button
+        disabled={props.isSubmitting || alreadyReported}
+        onClick={() => props.onToggle(props.isOpen ? null : props.commentId)}
+        style={{
+          ...secondaryButtonStyle,
+          padding: "7px 10px",
+          fontSize: 12,
+          opacity: props.isSubmitting || alreadyReported ? 0.6 : 1
+        }}
+        type="button"
+      >
+        {alreadyReported
+          ? "Reported"
+          : props.isOpen
+            ? "Choose report reason"
+            : props.isSubmitting
+              ? "Reporting..."
+              : "Report"}
+      </button>
+      {props.isOpen && !alreadyReported ? (
+        <div style={reportMenuStyle}>
+          {options.map((option) => (
+            <button
+              key={option.code}
+              onClick={() => {
+                props.onReportComment(props.commentId, option.code);
+                props.onToggle(null);
+              }}
+              style={reportOptionButtonStyle}
+              type="button"
+            >
+              <strong>{option.label}</strong>
+              <span style={helperNoteStyle}>{option.description}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -517,6 +601,7 @@ function renderVerifyPrompt(props: Pick<OverlayViewProps, "onOpenFeedback" | "on
 
 export function OverlayView(props: OverlayViewProps) {
   const { lookup } = props;
+  const [openReportCommentId, setOpenReportCommentId] = useState<string | null>(null);
 
   if (props.surfaceState === "loading") {
     return renderSurfaceShell({
@@ -623,10 +708,22 @@ export function OverlayView(props: OverlayViewProps) {
                   profileHandle: topTake.profileHandle,
                   onFollow: props.onFollow
                 })}
+                {renderSafetyButtons({
+                  blockedProfileIds: props.blockedProfileIds,
+                  isSubmitting: props.isSubmitting,
+                  lookup,
+                  mutedProfileIds: props.mutedProfileIds,
+                  onBlockProfile: props.onBlockProfile,
+                  onMuteProfile: props.onMuteProfile,
+                  profileHandle: topTake.profileHandle,
+                  profileId: topTake.profileId
+                })}
                 {renderReportButton({
                   commentId: topTake.commentId,
+                  isOpen: openReportCommentId === topTake.commentId,
                   isSubmitting: props.isSubmitting,
                   onReportComment: props.onReportComment,
+                  onToggle: setOpenReportCommentId,
                   reportedCommentIds: props.reportedCommentIds
                 })}
               </div>
@@ -667,10 +764,22 @@ export function OverlayView(props: OverlayViewProps) {
                     profileHandle: comment.profileHandle,
                     onFollow: props.onFollow
                   })}
+                  {renderSafetyButtons({
+                    blockedProfileIds: props.blockedProfileIds,
+                    isSubmitting: props.isSubmitting,
+                    lookup,
+                    mutedProfileIds: props.mutedProfileIds,
+                    onBlockProfile: props.onBlockProfile,
+                    onMuteProfile: props.onMuteProfile,
+                    profileHandle: comment.profileHandle,
+                    profileId: comment.profileId
+                  })}
                   {renderReportButton({
                     commentId: comment.commentId,
+                    isOpen: openReportCommentId === comment.commentId,
                     isSubmitting: props.isSubmitting,
                     onReportComment: props.onReportComment,
+                    onToggle: setOpenReportCommentId,
                     reportedCommentIds: props.reportedCommentIds
                   })}
                 </div>
@@ -756,6 +865,23 @@ const buttonIconLabelStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   gap: 8
+};
+
+const reportMenuStyle: CSSProperties = {
+  display: "grid",
+  gap: 6,
+  padding: 8,
+  borderRadius: 12,
+  background: "rgba(255, 255, 255, 0.05)",
+  border: "1px solid rgba(255, 255, 255, 0.08)"
+};
+
+const reportOptionButtonStyle: CSSProperties = {
+  ...secondaryButtonStyle,
+  display: "grid",
+  gap: 4,
+  textAlign: "left",
+  padding: "8px 10px"
 };
 
 const mutedStyle: CSSProperties = {

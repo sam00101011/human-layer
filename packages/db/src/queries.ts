@@ -135,6 +135,10 @@ export type ModerationQueueItem = {
   authorHiddenCommentCount: number;
   authorBlockedAt: string | null;
   repeatOffender: boolean;
+  priorityLabel: "low" | "standard" | "high" | "urgent";
+  priorityScore: number;
+  priorityReasons: string[];
+  escalateProfileBlock: boolean;
 };
 
 export type ModerationAuditItem = {
@@ -158,6 +162,7 @@ export type DiscoveryPage = PageSummary & {
   activityScore: number;
   summary: string;
   tags: InterestTag[];
+  reason: string;
 };
 
 export type DiscoveryTake = {
@@ -172,6 +177,7 @@ export type DiscoveryTake = {
   pageTitle: string;
   canonicalUrl: string;
   reputation?: ContributorReputation;
+  reason: string;
 };
 
 export type DiscoveryProfile = {
@@ -198,6 +204,8 @@ export type TopicSurface = {
   description: string;
   clusterTags: InterestTag[];
   relatedTopics: InterestTag[];
+  whyNow: string;
+  viewerReason: string | null;
   trendingPages: DiscoveryPage[];
   topTakes: DiscoveryTake[];
   topContributors: DiscoveryProfile[];
@@ -265,7 +273,9 @@ type RankedPageActivityRow = PageSummary & {
   verdictCount: number;
   commentCount: number;
   bookmarkCount: number;
+  helpfulCount: number;
   activityScore: number;
+  latestActivityAt: string;
 };
 
 type DiscoveryProfileRow = {
@@ -287,6 +297,266 @@ function hasInterestOverlap(candidateTags: readonly InterestTag[], clusterTags: 
 function countSharedInterestTags(candidateTags: readonly InterestTag[], clusterTags: readonly InterestTag[]): number {
   const cluster = new Set(clusterTags);
   return candidateTags.filter((tag) => cluster.has(tag)).length;
+}
+
+function pluralize(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+function getSharedInterestPreview(
+  candidateTags: readonly InterestTag[],
+  clusterTags: readonly InterestTag[],
+  limit = 3
+): InterestTag[] {
+  const cluster = new Set(clusterTags);
+  return candidateTags.filter((tag) => cluster.has(tag)).slice(0, limit);
+}
+
+async function getViewerInterestContext(viewerProfileId?: string): Promise<{
+  viewerInterestTags: InterestTag[];
+  followedTopics: InterestTag[];
+  viewerCluster: InterestTag[];
+}> {
+  if (!viewerProfileId) {
+    return {
+      viewerInterestTags: [],
+      followedTopics: [],
+      viewerCluster: []
+    };
+  }
+
+  const [viewerRow, followedTopics] = await Promise.all([
+    db.query.profiles.findFirst({
+      where: eq(profiles.id, viewerProfileId)
+    }),
+    getFollowedTopicsForProfile(viewerProfileId)
+  ]);
+
+  const viewerInterestTags = viewerRow ? coerceInterestTags(viewerRow.interestTags) : [];
+  const viewerCluster = [
+    ...new Set([
+      ...viewerInterestTags,
+      ...followedTopics,
+      ...followedTopics.flatMap((topic) => buildInterestCluster(topic, 2))
+    ])
+  ];
+
+  return {
+    viewerInterestTags,
+    followedTopics,
+    viewerCluster
+  };
+}
+
+function buildDiscoveryPageReason(page: RankedPageActivityRow, thread: ThreadSnapshot): string {
+  const reasons: string[] = [];
+  const topTake = thread.topHumanTake;
+
+  if (topTake?.helpfulCount && topTake.helpfulCount > 0) {
+    reasons.push(`Top take marked helpful ${topTake.helpfulCount}`);
+  }
+
+  if (topTake?.reputation?.level === "consistently_useful") {
+    reasons.push("Led by a consistently useful contributor");
+  } else if (topTake?.reputation?.level === "steady_contributor") {
+    reasons.push("Led by a steady contributor");
+  }
+
+  if (page.bookmarkCount > 0) {
+    reasons.push(`${pluralize(page.bookmarkCount, "bookmark")}`);
+  }
+
+  if (page.commentCount > 0) {
+    reasons.push(`${pluralize(page.commentCount, "verified take")}`);
+  }
+
+  if (reasons.length === 0 && page.verdictCount > 0) {
+    reasons.push(`${pluralize(page.verdictCount, "verdict")}`);
+  }
+
+  if (reasons.length === 0) {
+    reasons.push("Fresh page signal");
+  }
+
+  return reasons.slice(0, 2).join(" • ");
+}
+
+function buildViewerOverlapReason(
+  tags: readonly InterestTag[],
+  viewerCluster: readonly InterestTag[]
+): string | null {
+  if (viewerCluster.length === 0) {
+    return null;
+  }
+
+  const overlap = getSharedInterestPreview(tags, viewerCluster, 3);
+  if (overlap.length === 0) {
+    return null;
+  }
+
+  return `Relevant to ${formatInterestList(overlap)}`;
+}
+
+function buildDiscoveryTakeReason(params: {
+  take: Pick<DiscoveryTake, "helpfulCount" | "createdAt" | "reputation">;
+  page?: Pick<DiscoveryPage, "bookmarkCount" | "tags" | "commentCount">;
+  viewerCluster?: readonly InterestTag[];
+  topicCluster?: readonly InterestTag[];
+  topicLabel?: string;
+}): string {
+  const reasons: string[] = [];
+
+  if (params.take.helpfulCount > 0) {
+    reasons.push(`Helpful ${params.take.helpfulCount}`);
+  }
+
+  if (params.take.reputation?.level === "consistently_useful") {
+    reasons.push("Consistently useful contributor");
+  } else if (params.take.reputation?.level === "steady_contributor") {
+    reasons.push("Steady contributor");
+  } else if (params.take.reputation?.level === "emerging_signal") {
+    reasons.push("Emerging signal");
+  }
+
+  if (params.page?.bookmarkCount && params.page.bookmarkCount > 0) {
+    reasons.push(`${pluralize(params.page.bookmarkCount, "bookmark")}`);
+  }
+
+  const overlapSource = params.viewerCluster?.length ? params.viewerCluster : params.topicCluster;
+  const overlap = overlapSource && params.page
+    ? getSharedInterestPreview(params.page.tags, overlapSource, 3)
+    : [];
+  if (overlap.length > 0) {
+    reasons.push(
+      params.topicLabel
+        ? `Strong in ${params.topicLabel} via ${formatInterestList(overlap)}`
+        : `Relevant to ${formatInterestList(overlap)}`
+    );
+  }
+
+  if (reasons.length === 0 && getFreshnessBoost(params.take.createdAt) >= 5) {
+    reasons.push("Fresh verified take");
+  }
+
+  if (reasons.length === 0) {
+    reasons.push("Worth a quick read");
+  }
+
+  return reasons.slice(0, 3).join(" • ");
+}
+
+function buildTopicWhyNow(params: {
+  topicLabel: string;
+  trendingPages: DiscoveryPage[];
+  topTakes: DiscoveryTake[];
+  topContributors: DiscoveryProfile[];
+}): string {
+  const leadingPage = params.trendingPages[0];
+  const leadingTake = params.topTakes[0];
+  const leadingContributor = params.topContributors[0];
+
+  if (leadingPage && leadingTake) {
+    return `${params.topicLabel} is moving because ${leadingPage.title} is active and @${leadingTake.profileHandle} is getting traction.`;
+  }
+
+  if (leadingPage) {
+    return `${params.topicLabel} has live page momentum around ${leadingPage.title}.`;
+  }
+
+  if (leadingContributor) {
+    return `${leadingContributor.reason} is helping shape this topic right now.`;
+  }
+
+  return `Early verified-human signal is starting to form around ${params.topicLabel}.`;
+}
+
+function buildTopicViewerReason(params: {
+  topic: InterestTag;
+  clusterTags: readonly InterestTag[];
+  viewerInterestTags: readonly InterestTag[];
+  followedTopics: readonly InterestTag[];
+}): string | null {
+  if (params.followedTopics.includes(params.topic)) {
+    return `Because you already follow ${getInterestTagLabel(params.topic)}, fresh takes here will keep showing up in your graph.`;
+  }
+
+  const followedOverlap = getSharedInterestPreview(params.followedTopics, params.clusterTags, 2);
+  if (followedOverlap.length > 0) {
+    return `Because you follow ${formatInterestList(followedOverlap)}, this topic sits right next to the graph you already track.`;
+  }
+
+  const viewerOverlap = getSharedInterestPreview(params.viewerInterestTags, params.clusterTags, 3);
+  if (viewerOverlap.length > 0) {
+    return `Because your interests overlap on ${formatInterestList(viewerOverlap)}.`;
+  }
+
+  return null;
+}
+
+function getModerationPriority(params: {
+  reasonCode: string;
+  status: string;
+  authorReportCount: number;
+  authorOpenReportCount: number;
+  authorHiddenCommentCount: number;
+  authorBlockedAt: string | null;
+}): {
+  priorityLabel: "low" | "standard" | "high" | "urgent";
+  priorityScore: number;
+  priorityReasons: string[];
+  escalateProfileBlock: boolean;
+} {
+  let priorityScore = 0;
+  const priorityReasons: string[] = [];
+
+  if (params.status === "open") {
+    priorityScore += 2;
+    priorityReasons.push("Open report");
+  }
+
+  if (["hate_or_harm", "privacy_doxxing", "scam"].includes(params.reasonCode)) {
+    priorityScore += 6;
+    priorityReasons.push("Severe report reason");
+  } else if (["abuse_harassment", "misleading"].includes(params.reasonCode)) {
+    priorityScore += 3;
+  }
+
+  if (params.authorOpenReportCount >= 3) {
+    priorityScore += 4;
+    priorityReasons.push("Multiple open reports");
+  } else if (params.authorOpenReportCount >= 2) {
+    priorityScore += 2;
+  }
+
+  if (params.authorHiddenCommentCount >= 2) {
+    priorityScore += 4;
+    priorityReasons.push("Hidden comments already exist");
+  } else if (params.authorHiddenCommentCount === 1) {
+    priorityScore += 2;
+  }
+
+  if (params.authorReportCount >= 5) {
+    priorityScore += 3;
+    priorityReasons.push("High total report volume");
+  }
+
+  if (params.authorBlockedAt) {
+    priorityScore += 2;
+    priorityReasons.push("Author already blocked");
+  }
+
+  const priorityLabel =
+    priorityScore >= 12 ? "urgent" : priorityScore >= 8 ? "high" : priorityScore >= 4 ? "standard" : "low";
+  const escalateProfileBlock =
+    !params.authorBlockedAt &&
+    (params.authorHiddenCommentCount >= 2 || params.authorOpenReportCount >= 3 || priorityLabel === "urgent");
+
+  return {
+    priorityLabel,
+    priorityScore,
+    priorityReasons: [...new Set(priorityReasons)].slice(0, 3),
+    escalateProfileBlock
+  };
 }
 
 async function getTopicMatchMap(
@@ -366,12 +636,14 @@ async function getRecentTakeCandidates(limit = 36): Promise<DiscoveryTake[]> {
     pageKind: row.pageKind as PageSummary["pageKind"],
     pageTitle: row.pageTitle,
     canonicalUrl: row.canonicalUrl,
-    reputation: reputationMap.get(row.profileId) ?? defaultContributorReputation()
+    reputation: reputationMap.get(row.profileId) ?? defaultContributorReputation(),
+    reason: "Fresh verified take"
   }));
 }
 
 async function getRankedPageActivityRows(): Promise<RankedPageActivityRow[]> {
-  const [verdictRows, commentRows, bookmarkRows] = await Promise.all([
+  const [verdictRows, commentRows, bookmarkRows, helpfulRows, latestCommentRows, latestSaveRows, latestVerdictRows] =
+    await Promise.all([
     db
       .select({
         pageId: verdicts.pageId,
@@ -393,13 +665,61 @@ async function getRankedPageActivityRows(): Promise<RankedPageActivityRow[]> {
         count: sql<number>`count(*)::int`
       })
       .from(saves)
-      .groupBy(saves.pageId)
+      .groupBy(saves.pageId),
+    db
+      .select({
+        pageId: comments.pageId,
+        count: sql<number>`count(${commentHelpfulVotes.id})::int`
+      })
+      .from(comments)
+      .leftJoin(commentHelpfulVotes, eq(commentHelpfulVotes.commentId, comments.id))
+      .where(eq(comments.hidden, false))
+      .groupBy(comments.pageId),
+    db
+      .select({
+        pageId: comments.pageId,
+        latestActivityAt: sql<Date>`max(${comments.createdAt})`
+      })
+      .from(comments)
+      .where(eq(comments.hidden, false))
+      .groupBy(comments.pageId),
+    db
+      .select({
+        pageId: saves.pageId,
+        latestActivityAt: sql<Date>`max(${saves.createdAt})`
+      })
+      .from(saves)
+      .groupBy(saves.pageId),
+    db
+      .select({
+        pageId: verdicts.pageId,
+        latestActivityAt: sql<Date>`max(${verdicts.createdAt})`
+      })
+      .from(verdicts)
+      .groupBy(verdicts.pageId)
   ]);
 
   const verdictMap = new Map(verdictRows.map((row) => [row.pageId, row.count]));
   const commentMap = new Map(commentRows.map((row) => [row.pageId, row.count]));
   const bookmarkMap = new Map(bookmarkRows.map((row) => [row.pageId, row.count]));
-  const pageIds = [...new Set([...verdictMap.keys(), ...commentMap.keys(), ...bookmarkMap.keys()])];
+  const helpfulMap = new Map(helpfulRows.map((row) => [row.pageId, row.count]));
+  const latestActivityRows = [...latestCommentRows, ...latestSaveRows, ...latestVerdictRows];
+  const latestActivityMap = new Map<string, Date>();
+  for (const row of latestActivityRows) {
+    const current = latestActivityMap.get(row.pageId);
+    if (!current || row.latestActivityAt > current) {
+      latestActivityMap.set(row.pageId, row.latestActivityAt);
+    }
+  }
+
+  const pageIds = [
+    ...new Set([
+      ...verdictMap.keys(),
+      ...commentMap.keys(),
+      ...bookmarkMap.keys(),
+      ...helpfulMap.keys()
+    ])
+  ];
 
   if (pageIds.length === 0) return [];
 
@@ -420,6 +740,8 @@ async function getRankedPageActivityRows(): Promise<RankedPageActivityRow[]> {
       const verdictCount = verdictMap.get(row.id) ?? 0;
       const commentCount = commentMap.get(row.id) ?? 0;
       const bookmarkCount = bookmarkMap.get(row.id) ?? 0;
+      const helpfulCount = helpfulMap.get(row.id) ?? 0;
+      const latestActivityAt = (latestActivityMap.get(row.id) ?? new Date(0)).toISOString();
 
       return {
         id: row.id,
@@ -431,7 +753,14 @@ async function getRankedPageActivityRows(): Promise<RankedPageActivityRow[]> {
         verdictCount,
         commentCount,
         bookmarkCount,
-        activityScore: verdictCount * 3 + commentCount * 4 + bookmarkCount * 2
+        helpfulCount,
+        activityScore:
+          verdictCount * 3 +
+          commentCount * 4 +
+          bookmarkCount * 2 +
+          helpfulCount * 3 +
+          getFreshnessBoost(latestActivityAt) * 2,
+        latestActivityAt
       } satisfies RankedPageActivityRow;
     })
     .sort((left, right) => right.activityScore - left.activityScore || right.commentCount - left.commentCount);
@@ -462,7 +791,8 @@ async function hydrateDiscoveryPages(rows: RankedPageActivityRow[]): Promise<Dis
         bookmarkCount: page.bookmarkCount,
         activityScore: page.activityScore,
         summary: context.summary,
-        tags: context.tags
+        tags: context.tags,
+        reason: buildDiscoveryPageReason(page, thread)
       } satisfies DiscoveryPage;
     })
   );
@@ -503,7 +833,9 @@ async function getDiscoveryPagesByIds(pageIds: string[]): Promise<Map<string, Di
           verdictCount: 0,
           commentCount: 0,
           bookmarkCount: 0,
-          activityScore: 0
+          helpfulCount: 0,
+          activityScore: 0,
+          latestActivityAt: new Date(0).toISOString()
         }) satisfies RankedPageActivityRow);
 
   const targetRows = uniquePageIds
@@ -561,7 +893,8 @@ async function getRankedTakeCandidates(limit = 24): Promise<DiscoveryTake[]> {
       pageKind: row.pageKind as PageSummary["pageKind"],
       pageTitle: row.pageTitle,
       canonicalUrl: row.canonicalUrl,
-      reputation: reputationMap.get(row.profileId) ?? defaultContributorReputation()
+      reputation: reputationMap.get(row.profileId) ?? defaultContributorReputation(),
+      reason: "Recommended verified take"
     }))
     .sort(
       (left, right) =>
@@ -993,13 +1326,69 @@ export async function getPageThreadSnapshot(
   };
 }
 
-export async function getTrendingPages(limit = 6): Promise<DiscoveryPage[]> {
-  const rankedPages = await getRankedPageActivityRows();
-  return hydrateDiscoveryPages(rankedPages.slice(0, limit));
+export async function getTrendingPages(
+  limit = 6,
+  viewerProfileId?: string
+): Promise<DiscoveryPage[]> {
+  const [rankedPages, viewerContext] = await Promise.all([
+    getRankedPageActivityRows(),
+    getViewerInterestContext(viewerProfileId)
+  ]);
+  const hydratedPages = await hydrateDiscoveryPages(rankedPages.slice(0, Math.max(limit * 8, 48)));
+
+  return hydratedPages
+    .map((page) => {
+      const viewerOverlap = countSharedInterestTags(page.tags, viewerContext.viewerCluster);
+      const score = page.activityScore + viewerOverlap * 6 + page.bookmarkCount;
+      const viewerReason = buildViewerOverlapReason(page.tags, viewerContext.viewerCluster);
+      return {
+        ...page,
+        reason: viewerReason ? `${page.reason} • ${viewerReason}` : page.reason,
+        score
+      };
+    })
+    .sort((left, right) => right.score - left.score || right.commentCount - left.commentCount)
+    .slice(0, limit)
+    .map(({ score: _score, ...page }) => page);
 }
 
-export async function getRecommendedTakes(limit = 6): Promise<DiscoveryTake[]> {
-  return (await getRankedTakeCandidates(Math.max(limit * 4, 24))).slice(0, limit);
+export async function getRecommendedTakes(
+  limit = 6,
+  viewerProfileId?: string
+): Promise<DiscoveryTake[]> {
+  const [takeCandidates, viewerContext] = await Promise.all([
+    getRankedTakeCandidates(Math.max(limit * 6, 36)),
+    getViewerInterestContext(viewerProfileId)
+  ]);
+  const pageMap = await getDiscoveryPagesByIds(takeCandidates.map((take) => take.pageId));
+
+  return takeCandidates
+    .map((take) => {
+      const page = pageMap.get(take.pageId);
+      const viewerOverlap = page ? countSharedInterestTags(page.tags, viewerContext.viewerCluster) : 0;
+      const score =
+        rankTakeLikeSignal({
+          helpfulCount: take.helpfulCount,
+          createdAt: take.createdAt,
+          reputationLevel: take.reputation?.level
+        }) +
+        (page?.bookmarkCount ?? 0) * 2 +
+        viewerOverlap * 6 +
+        (page?.commentCount ?? 0);
+
+      return {
+        ...take,
+        reason: buildDiscoveryTakeReason({
+          take,
+          page,
+          viewerCluster: viewerContext.viewerCluster
+        }),
+        score
+      };
+    })
+    .sort((left, right) => right.score - left.score || right.helpfulCount - left.helpfulCount)
+    .slice(0, limit)
+    .map(({ score: _score, ...take }) => take);
 }
 
 export async function getPeopleToFollow(limit = 6, viewerProfileId?: string): Promise<DiscoveryProfile[]> {
@@ -1060,11 +1449,20 @@ export async function getPeopleToFollow(limit = 6, viewerProfileId?: string): Pr
       const followerCount = followerCountMap.get(row.id) ?? 0;
       const verifiedHuman = Boolean(row.nullifierHash);
       const reputation = reputationMap.get(row.id) ?? defaultContributorReputation();
-      const score = (verifiedHuman ? 6 : 0) + commentCount * 3 + followerCount * 2 + sharedInterestCount * 4;
+      const score =
+        (verifiedHuman ? 6 : 0) +
+        commentCount * 3 +
+        followerCount * 2 +
+        sharedInterestCount * 4 +
+        getReputationWeight(reputation.level) * 2;
       const reasonParts = [];
 
       if (sharedInterestCount > 0) {
         reasonParts.push(`Shared interests in ${formatInterestList(interestTags)}`);
+      }
+
+      if (followerCount > 0) {
+        reasonParts.push(`${pluralize(followerCount, "follower")}`);
       }
 
       reasonParts.push(reputation.description);
@@ -1205,25 +1603,54 @@ export async function searchDiscovery(query: string, limit = 6): Promise<Discove
         bookmarkCount: 0,
         activityScore: Object.values(thread.verdictCounts).reduce((sum, count) => sum + count, 0) + thread.recentComments.length,
         summary: context.summary,
-        tags: context.tags
+        tags: context.tags,
+        reason: buildDiscoveryPageReason(
+          {
+            id: page.id,
+            pageKind: page.pageKind as PageSummary["pageKind"],
+            canonicalUrl: page.canonicalUrl,
+            canonicalKey: page.canonicalKey,
+            host: page.host,
+            title: page.title,
+            verdictCount: Object.values(thread.verdictCounts).reduce((sum, count) => sum + count, 0),
+            commentCount: thread.recentComments.length,
+            bookmarkCount: 0,
+            helpfulCount: thread.recentComments.reduce((sum, comment) => sum + comment.helpfulCount, 0),
+            activityScore:
+              Object.values(thread.verdictCounts).reduce((sum, count) => sum + count, 0) +
+              thread.recentComments.length,
+            latestActivityAt:
+              thread.recentComments[0]?.createdAt ??
+              new Date(0).toISOString()
+          },
+          thread
+        )
       } satisfies DiscoveryPage;
     })
   );
 
   return {
     pages: pagesWithContext,
-    takes: takeRows.map((row) => ({
-      commentId: row.commentId,
-      body: row.body,
-      createdAt: row.createdAt.toISOString(),
-      helpfulCount: row.helpfulCount,
-      profileId: row.profileId,
-      profileHandle: row.profileHandle,
-      pageId: row.pageId,
-      pageKind: row.pageKind as PageSummary["pageKind"],
-      pageTitle: row.pageTitle,
-      canonicalUrl: row.canonicalUrl
-    })),
+    takes: takeRows.map((row) => {
+      const take = {
+        commentId: row.commentId,
+        body: row.body,
+        createdAt: row.createdAt.toISOString(),
+        helpfulCount: row.helpfulCount,
+        profileId: row.profileId,
+        profileHandle: row.profileHandle,
+        pageId: row.pageId,
+        pageKind: row.pageKind as PageSummary["pageKind"],
+        pageTitle: row.pageTitle,
+        canonicalUrl: row.canonicalUrl,
+        reputation: defaultContributorReputation()
+      } satisfies Omit<DiscoveryTake, "reason">;
+
+      return {
+        ...take,
+        reason: buildDiscoveryTakeReason({ take })
+      };
+    }),
     profiles: profileRows.map((row) => {
       const interestTags = coerceInterestTags(row.interestTags);
       const commentCount = commentCountMap.get(row.id) ?? 0;
@@ -1248,29 +1675,65 @@ export async function searchDiscovery(query: string, limit = 6): Promise<Discove
 
 export async function getTopicSurface(
   topic: InterestTag,
-  limit = 6
+  limit = 6,
+  viewerProfileId?: string
 ): Promise<TopicSurface> {
   const clusterTags = buildInterestCluster(topic, 5);
   const clusterSet = new Set(clusterTags);
-  const [rankedPages, takeCandidates, profileData] = await Promise.all([
+  const [rankedPages, takeCandidates, profileData, viewerContext] = await Promise.all([
     getRankedPageActivityRows(),
     getRankedTakeCandidates(Math.max(limit * 10, 60)),
-    getProfileDiscoveryRows()
+    getProfileDiscoveryRows(),
+    getViewerInterestContext(viewerProfileId)
   ]);
 
   const trendingPages = (await hydrateDiscoveryPages(rankedPages.slice(0, Math.max(limit * 12, 72))))
     .filter((page) => hasInterestOverlap(page.tags, clusterTags))
-    .slice(0, limit);
+    .map((page) => {
+      const pageClusterOverlap = countSharedInterestTags(page.tags, clusterTags);
+      const viewerOverlap = countSharedInterestTags(page.tags, viewerContext.viewerCluster);
+      return {
+        ...page,
+        score: page.activityScore + pageClusterOverlap * 5 + viewerOverlap * 3
+      };
+    })
+    .sort((left, right) => right.score - left.score || right.commentCount - left.commentCount)
+    .slice(0, limit)
+    .map(({ score: _score, ...page }) => page);
 
   const takePageMap = await getDiscoveryPagesByIds(takeCandidates.map((take) => take.pageId));
   const topicTakeCandidates = takeCandidates.filter((take) => {
     const page = takePageMap.get(take.pageId);
     return page ? hasInterestOverlap(page.tags, clusterTags) : false;
   });
-  const topTakes = topicTakeCandidates.slice(0, limit);
+  const topTakes = topicTakeCandidates
+    .map((take) => {
+      const page = takePageMap.get(take.pageId);
+      const pageClusterOverlap = page ? countSharedInterestTags(page.tags, clusterTags) : 0;
+      return {
+        ...take,
+        reason: buildDiscoveryTakeReason({
+          take,
+          page,
+          topicCluster: clusterTags,
+          topicLabel: getInterestTagLabel(topic)
+        }),
+        score:
+          rankTakeLikeSignal({
+            helpfulCount: take.helpfulCount,
+            createdAt: take.createdAt,
+            reputationLevel: take.reputation?.level
+          }) +
+          pageClusterOverlap * 5 +
+          (page?.bookmarkCount ?? 0)
+      };
+    })
+    .sort((left, right) => right.score - left.score || right.helpfulCount - left.helpfulCount)
+    .slice(0, limit)
+    .map(({ score: _score, ...take }) => take);
 
   const topicTakeStats = new Map<string, { takeCount: number; helpfulCount: number }>();
-  for (const take of topicTakeCandidates) {
+  for (const take of topTakes) {
     const current = topicTakeStats.get(take.profileId) ?? { takeCount: 0, helpfulCount: 0 };
     current.takeCount += 1;
     current.helpfulCount += take.helpfulCount;
@@ -1331,6 +1794,18 @@ export async function getTopicSurface(
     description: getInterestTagDescription(topic),
     clusterTags,
     relatedTopics: getRelatedInterestTags([topic], 6),
+    whyNow: buildTopicWhyNow({
+      topicLabel: getInterestTagLabel(topic),
+      trendingPages,
+      topTakes,
+      topContributors
+    }),
+    viewerReason: buildTopicViewerReason({
+      topic,
+      clusterTags,
+      viewerInterestTags: viewerContext.viewerInterestTags,
+      followedTopics: viewerContext.followedTopics
+    }),
     trendingPages,
     topTakes,
     topContributors
@@ -1350,12 +1825,29 @@ export async function getRecentTakesForTopic(
       const page = takePageMap.get(take.pageId);
       return page ? hasInterestOverlap(page.tags, clusterTags) : false;
     })
-    .sort(
-      (left, right) =>
-        new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime() ||
-        right.helpfulCount - left.helpfulCount
-    )
-    .slice(0, limit);
+    .map((take) => {
+      const page = takePageMap.get(take.pageId);
+      return {
+        ...take,
+        reason: buildDiscoveryTakeReason({
+          take,
+          page,
+          topicCluster: clusterTags,
+          topicLabel: getInterestTagLabel(topic)
+        }),
+        score:
+          getFreshnessBoost(take.createdAt) * 1.5 +
+          rankTakeLikeSignal({
+            helpfulCount: take.helpfulCount,
+            createdAt: take.createdAt,
+            reputationLevel: take.reputation?.level
+          }) +
+          (page?.bookmarkCount ?? 0)
+      };
+    })
+    .sort((left, right) => right.score - left.score || right.helpfulCount - left.helpfulCount)
+    .slice(0, limit)
+    .map(({ score: _score, ...take }) => take);
 }
 
 export async function getTopicFeedFromFollowedProfiles(
@@ -1363,6 +1855,7 @@ export async function getTopicFeedFromFollowedProfiles(
   topic: InterestTag,
   limit = 6
 ): Promise<FollowGraphItem[]> {
+  const viewerContext = await getViewerInterestContext(profileId);
   const rows = await db
     .select({
       commentId: comments.id,
@@ -1433,22 +1926,42 @@ export async function getTopicFeedFromFollowedProfiles(
       const page = pageMap.get(row.pageId);
       return page ? hasInterestOverlap(page.tags, clusterTags) : false;
     })
-    .map((row) => ({
-      commentId: row.commentId,
-      body: row.body,
-      createdAt: row.createdAt.toISOString(),
-      helpfulCount: row.helpfulCount,
-      authorProfileId: row.authorProfileId,
-      authorHandle: row.authorHandle,
-      authorReputation: reputationMap.get(row.authorProfileId) ?? defaultContributorReputation(),
-      pageId: row.pageId,
-      pageKind: row.pageKind as PageSummary["pageKind"],
-      pageTitle: row.pageTitle,
-      pageCanonicalUrl: row.pageCanonicalUrl,
-      pageHost: row.pageHost,
-      reason: `New take from someone you follow in ${getInterestTagLabel(topic)}.`
-    }))
-    .slice(0, limit);
+    .map((row) => {
+      const page = pageMap.get(row.pageId);
+      const matchingTags = page ? getSharedInterestPreview(page.tags, clusterTags, 3) : [];
+      const viewerOverlap = page ? buildViewerOverlapReason(page.tags, viewerContext.viewerCluster) : null;
+      return {
+        commentId: row.commentId,
+        body: row.body,
+        createdAt: row.createdAt.toISOString(),
+        helpfulCount: row.helpfulCount,
+        authorProfileId: row.authorProfileId,
+        authorHandle: row.authorHandle,
+        authorReputation: reputationMap.get(row.authorProfileId) ?? defaultContributorReputation(),
+        pageId: row.pageId,
+        pageKind: row.pageKind as PageSummary["pageKind"],
+        pageTitle: row.pageTitle,
+        pageCanonicalUrl: row.pageCanonicalUrl,
+        pageHost: row.pageHost,
+        reason: [
+          `Because you follow @${row.authorHandle}`,
+          matchingTags.length > 0 ? `Strong in ${formatInterestList(matchingTags)}` : null,
+          viewerOverlap
+        ]
+          .filter((value): value is string => Boolean(value))
+          .join(" • "),
+        score:
+          rankTakeLikeSignal({
+            helpfulCount: row.helpfulCount,
+            createdAt: row.createdAt,
+            reputationLevel: reputationMap.get(row.authorProfileId)?.level
+          }) +
+          (page?.bookmarkCount ?? 0)
+      } satisfies FollowGraphItem & { score: number };
+    })
+    .sort((left, right) => right.score - left.score || right.helpfulCount - left.helpfulCount)
+    .slice(0, limit)
+    .map(({ score: _score, ...item }) => item);
 }
 
 export async function getPeopleSimilarToFollowing(
@@ -1536,7 +2049,7 @@ export async function getPagesBookmarkedByFollowedProfiles(
   profileId: string,
   limit = 6
 ): Promise<FollowRecommendedPage[]> {
-  const [rows, mutedRows, blockedRows] = await Promise.all([
+  const [rows, mutedRows, blockedRows, viewerContext] = await Promise.all([
     db
       .select({
         pageId: saves.pageId,
@@ -1560,7 +2073,8 @@ export async function getPagesBookmarkedByFollowedProfiles(
         blockedProfileId: blockedProfiles.blockedProfileId
       })
       .from(blockedProfiles)
-      .where(eq(blockedProfiles.profileId, profileId))
+      .where(eq(blockedProfiles.profileId, profileId)),
+    getViewerInterestContext(profileId)
   ]);
 
   const mutedPageIds = new Set(mutedRows.map((row) => row.pageId));
@@ -1590,16 +2104,22 @@ export async function getPagesBookmarkedByFollowedProfiles(
       if (!page) return null;
 
       const handlePreview = signal.handles.slice(0, 3).map((handle) => `@${handle}`).join(", ");
+      const viewerReason = buildViewerOverlapReason(page.tags, viewerContext.viewerCluster);
 
       return {
         ...page,
         bookmarkedByCount: signal.count,
         bookmarkedByHandles: signal.handles.slice(0, 5),
         reason:
-          signal.count === 1
-            ? `Bookmarked by ${handlePreview}.`
-            : `Bookmarked by ${handlePreview}${signal.handles.length > 3 ? " and more" : ""}.`,
-        score: signal.count * 8 + page.activityScore
+          [
+            signal.count === 1
+              ? `Bookmarked by ${handlePreview}.`
+              : `Bookmarked by ${handlePreview}${signal.handles.length > 3 ? " and more" : ""}.`,
+            viewerReason
+          ]
+            .filter((value): value is string => Boolean(value))
+            .join(" • "),
+        score: signal.count * 8 + page.activityScore + countSharedInterestTags(page.tags, viewerContext.viewerCluster) * 4
       };
     })
     .filter((page): page is FollowRecommendedPage & { score: number } => Boolean(page))
@@ -2335,6 +2855,7 @@ export async function getFollowedProfileActivity(
     return [];
   }
 
+  const viewerContext = await getViewerInterestContext(profileId);
   const rows = await db
     .select({
       commentId: comments.id,
@@ -2397,38 +2918,47 @@ export async function getFollowedProfileActivity(
     .limit(Math.max(limit * 3, 24));
 
   const reputationMap = await getContributorReputationMap(rows.map((row) => row.authorProfileId));
+  const pageMap = await getDiscoveryPagesByIds(rows.map((row) => row.pageId));
 
   return rows
-    .map((row) => ({
-      commentId: row.commentId,
-      body: row.body,
-      createdAt: row.createdAt.toISOString(),
-      helpfulCount: row.helpfulCount,
-      authorProfileId: row.authorProfileId,
-      authorHandle: row.authorHandle,
-      authorReputation: reputationMap.get(row.authorProfileId) ?? defaultContributorReputation(),
-      pageId: row.pageId,
-      pageKind: row.pageKind as PageSummary["pageKind"],
-      pageTitle: row.pageTitle,
-      pageCanonicalUrl: row.pageCanonicalUrl,
-      pageHost: row.pageHost,
-      reason: "New take from someone you follow."
-    }))
+    .map((row) => {
+      const page = pageMap.get(row.pageId);
+      const viewerReason = page ? buildViewerOverlapReason(page.tags, viewerContext.viewerCluster) : null;
+      return {
+        commentId: row.commentId,
+        body: row.body,
+        createdAt: row.createdAt.toISOString(),
+        helpfulCount: row.helpfulCount,
+        authorProfileId: row.authorProfileId,
+        authorHandle: row.authorHandle,
+        authorReputation: reputationMap.get(row.authorProfileId) ?? defaultContributorReputation(),
+        pageId: row.pageId,
+        pageKind: row.pageKind as PageSummary["pageKind"],
+        pageTitle: row.pageTitle,
+        pageCanonicalUrl: row.pageCanonicalUrl,
+        pageHost: row.pageHost,
+        reason: [
+          "New take from someone you follow.",
+          viewerReason
+        ]
+          .filter((value): value is string => Boolean(value))
+          .join(" • "),
+        score:
+          rankTakeLikeSignal({
+            helpfulCount: row.helpfulCount,
+            createdAt: row.createdAt,
+            reputationLevel: reputationMap.get(row.authorProfileId)?.level
+          }) +
+          (page?.bookmarkCount ?? 0)
+      } satisfies FollowGraphItem & { score: number };
+    })
     .sort(
       (left, right) =>
-        rankTakeLikeSignal({
-          helpfulCount: right.helpfulCount,
-          createdAt: right.createdAt,
-          reputationLevel: right.authorReputation?.level
-        }) -
-          rankTakeLikeSignal({
-            helpfulCount: left.helpfulCount,
-            createdAt: left.createdAt,
-            reputationLevel: left.authorReputation?.level
-          }) ||
+        right.score - left.score ||
         new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
     )
-    .slice(0, limit);
+    .slice(0, limit)
+    .map(({ score: _score, ...item }) => item);
 }
 
 export async function getNotificationPreferencesForProfile(
@@ -2947,47 +3477,62 @@ export async function getModerationQueue(limit = 100): Promise<ModerationQueueIt
     blockedRows.map((row) => [row.id, row.blockedAt ? row.blockedAt.toISOString() : null])
   );
 
-  return rows.map((row) => ({
-    ...(function buildAuthorStats() {
+  return rows
+    .map((row) => {
       const reportStats = authorReportMap.get(row.authorProfileId) ?? {
         reportCount: 0,
         openReportCount: 0
       };
       const authorHiddenCommentCount = hiddenCountMap.get(row.authorProfileId) ?? 0;
       const authorBlockedAt = blockedAtMap.get(row.authorProfileId) ?? null;
+      const repeatOffender = isRepeatOffender({
+        authorReportCount: reportStats.reportCount,
+        authorOpenReportCount: reportStats.openReportCount,
+        authorHiddenCommentCount
+      });
+      const priority = getModerationPriority({
+        reasonCode: row.reasonCode,
+        status: row.status,
+        authorReportCount: reportStats.reportCount,
+        authorOpenReportCount: reportStats.openReportCount,
+        authorHiddenCommentCount,
+        authorBlockedAt
+      });
+
       return {
         authorReportCount: reportStats.reportCount,
         authorOpenReportCount: reportStats.openReportCount,
         authorHiddenCommentCount,
         authorBlockedAt,
-        repeatOffender: isRepeatOffender({
-          authorReportCount: reportStats.reportCount,
-          authorOpenReportCount: reportStats.openReportCount,
-          authorHiddenCommentCount
-        })
-      };
-    })(),
-    reportId: row.reportId,
-    status: row.status,
-    reasonCode: row.reasonCode,
-    details: row.details,
-    createdAt: row.createdAt.toISOString(),
-    reviewedAt: row.reviewedAt ? row.reviewedAt.toISOString() : null,
-    commentId: row.commentId,
-    commentBody: row.commentBody,
-    commentCreatedAt: row.commentCreatedAt.toISOString(),
-    commentHidden: row.commentHidden,
-    commentReasonCode: row.commentReasonCode,
-    authorProfileId: row.authorProfileId,
-    authorHandle: row.authorHandle,
-    reporterProfileId: row.reporterProfileId,
-    reporterHandle: reporterHandleMap.get(row.reporterProfileId) ?? "unknown",
-    pageId: row.pageId,
-    pageKind: row.pageKind as PageSummary["pageKind"],
-    pageTitle: row.pageTitle,
-    pageHost: row.pageHost,
-    pageCanonicalUrl: row.pageCanonicalUrl
-  }));
+        repeatOffender,
+        ...priority,
+        reportId: row.reportId,
+        status: row.status,
+        reasonCode: row.reasonCode,
+        details: row.details,
+        createdAt: row.createdAt.toISOString(),
+        reviewedAt: row.reviewedAt ? row.reviewedAt.toISOString() : null,
+        commentId: row.commentId,
+        commentBody: row.commentBody,
+        commentCreatedAt: row.commentCreatedAt.toISOString(),
+        commentHidden: row.commentHidden,
+        commentReasonCode: row.commentReasonCode,
+        authorProfileId: row.authorProfileId,
+        authorHandle: row.authorHandle,
+        reporterProfileId: row.reporterProfileId,
+        reporterHandle: reporterHandleMap.get(row.reporterProfileId) ?? "unknown",
+        pageId: row.pageId,
+        pageKind: row.pageKind as PageSummary["pageKind"],
+        pageTitle: row.pageTitle,
+        pageHost: row.pageHost,
+        pageCanonicalUrl: row.pageCanonicalUrl
+      } satisfies ModerationQueueItem;
+    })
+    .sort(
+      (left, right) =>
+        right.priorityScore - left.priorityScore ||
+        new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+    );
 }
 
 export async function reviewCommentReports(params: {

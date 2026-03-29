@@ -30,6 +30,10 @@ type ModerationQueueItem = {
   authorHiddenCommentCount: number;
   authorBlockedAt: string | null;
   repeatOffender: boolean;
+  priorityLabel: "low" | "standard" | "high" | "urgent";
+  priorityScore: number;
+  priorityReasons: string[];
+  escalateProfileBlock: boolean;
 };
 
 type ModerationQueueProps = {
@@ -47,6 +51,12 @@ function formatDate(value: string) {
 
 function formatPageKind(pageKind: string) {
   return pageKind.replace(/_/g, " ");
+}
+
+function getPriorityBadgeClass(priorityLabel: ModerationQueueItem["priorityLabel"]) {
+  if (priorityLabel === "urgent") return "pill pill-danger";
+  if (priorityLabel === "high") return "pill";
+  return "trust-badge soft";
 }
 
 export function ModerationQueue({ items }: ModerationQueueProps) {
@@ -112,9 +122,20 @@ export function ModerationQueue({ items }: ModerationQueueProps) {
                   {formatPageKind(item.pageKind)} • {item.pageHost} • report {item.status}
                 </p>
               </div>
-              <span className={item.commentHidden ? "pill pill-danger" : "pill"}>
-                {item.commentHidden ? "Hidden" : "Open"}
-              </span>
+              <div className="chip-row">
+                <span className={getPriorityBadgeClass(item.priorityLabel)}>
+                  {item.priorityLabel === "urgent"
+                    ? "Urgent"
+                    : item.priorityLabel === "high"
+                      ? "High priority"
+                      : item.priorityLabel === "standard"
+                        ? "Standard priority"
+                        : "Low priority"}
+                </span>
+                <span className={item.commentHidden ? "pill pill-danger" : "pill"}>
+                  {item.commentHidden ? "Hidden" : "Open"}
+                </span>
+              </div>
             </div>
 
             <div className="stack compact">
@@ -136,6 +157,12 @@ export function ModerationQueue({ items }: ModerationQueueProps) {
             <div className="chip-row">
               {item.repeatOffender ? <span className="pill pill-danger">Repeat offender risk</span> : null}
               {item.authorBlockedAt ? <span className="pill">Author blocked</span> : null}
+              {item.escalateProfileBlock ? <span className="trust-badge soft">Escalate profile block</span> : null}
+              {item.priorityReasons.map((reason) => (
+                <span className="trust-badge soft" key={reason}>
+                  {reason}
+                </span>
+              ))}
             </div>
             <p>{item.commentBody}</p>
             {item.details ? <p className="muted">Reporter note: {item.details}</p> : null}
@@ -193,7 +220,11 @@ export function ModerationQueue({ items }: ModerationQueueProps) {
                 }}
                 type="button"
               >
-                {item.authorBlockedAt ? `Unblock @${item.authorHandle}` : `Block @${item.authorHandle}`}
+                {item.authorBlockedAt
+                  ? `Unblock @${item.authorHandle}`
+                  : item.escalateProfileBlock
+                    ? `Escalate and block @${item.authorHandle}`
+                    : `Block @${item.authorHandle}`}
               </button>
             </div>
           </article>
