@@ -20,7 +20,7 @@ type ResearchResponse = {
     providerId: string;
     providerLabel: string;
     priceUsdCents: number;
-    mode: "preview";
+    mode: "preview" | "live";
     query: string;
     summary: string;
     whyItMatters: string;
@@ -110,11 +110,17 @@ export function WalletResearchAction({
         >
           {visibleProviders.map((provider) => (
             <option key={provider.id} value={provider.id}>
-              {provider.label}
+              {provider.label + " • " + formatUsd(provider.priceUsdCents)}
             </option>
           ))}
         </select>
       </label>
+
+      {visibleProviders.find((provider) => provider.id === providerId)?.description ? (
+        <p className="muted small-copy">
+          {visibleProviders.find((provider) => provider.id === providerId)?.description}
+        </p>
+      ) : null}
 
       <button className="button" onClick={() => void handleRun()} type="button">
         {status === "running" ? "Running research..." : "Research this page"}
@@ -128,11 +134,15 @@ export function WalletResearchAction({
             <span className="pill">Wallet result</span>
             <span className="trust-badge">{result.result.providerLabel}</span>
             <span className="trust-badge soft">
-              {formatUsd(result.result.priceUsdCents)} spent
+              {result.result.mode === "live"
+                ? formatUsd(result.result.priceUsdCents) + " spent"
+                : "Free preview"}
             </span>
-            <span className="trust-badge soft">
-              {formatUsd(result.payment.remainingCreditUsdCents)} credit left
-            </span>
+            {result.result.mode === "live" ? (
+              <span className="trust-badge soft">
+                {formatUsd(result.payment.remainingCreditUsdCents)} credit left
+              </span>
+            ) : null}
           </div>
           <p className="muted">{result.result.summary}</p>
           <div className="stack compact">

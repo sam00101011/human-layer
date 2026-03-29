@@ -20,6 +20,14 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+function formatProviderLabel(
+  providerId: string | null | undefined,
+  providerLabels: Map<string, string>
+) {
+  if (!providerId) return null;
+  return providerLabels.get(providerId) ?? providerId;
+}
+
 export default async function WalletPage(props: {
   searchParams: Promise<{ pageId?: string }>;
 }) {
@@ -36,6 +44,7 @@ export default async function WalletPage(props: {
   const sourcePage =
     typeof searchParams.pageId === "string" ? await findPageById(searchParams.pageId) : null;
   const providers = getWalletResearchProviders();
+  const providerLabels = new Map(providers.map((provider) => [provider.id, provider.label]));
 
   return (
     <div className="page-shell stack">
@@ -116,7 +125,9 @@ export default async function WalletPage(props: {
       <section className="card stack">
         <div className="section-header">
           <h2>Provider access</h2>
-          <span className="muted">The wallet can unlock one-click research actions with no crypto UX.</span>
+          <span className="muted">
+            The wallet can unlock one-click research actions across direct APIs, native x402 tools, and MPP-backed services.
+          </span>
         </div>
         <div className="topic-grid">
           {providers.map((provider) => (
@@ -180,7 +191,9 @@ export default async function WalletPage(props: {
                 <div className="stack compact">
                   <strong>{event.description ?? event.kind}</strong>
                   <span className="muted small-copy">
-                    {event.provider ? event.provider + " • " : ""}
+                    {formatProviderLabel(event.provider, providerLabels)
+                      ? formatProviderLabel(event.provider, providerLabels) + " • "
+                      : ""}
                     {event.pageTitle ?? "Wallet action"} • {formatDate(event.createdAt)}
                   </span>
                 </div>

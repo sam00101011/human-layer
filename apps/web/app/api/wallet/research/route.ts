@@ -2,13 +2,20 @@ import {
   ensureManagedWalletForProfile,
   findPageById,
   getPageThreadSnapshot,
-  recordWalletResearchPayment
+  recordWalletResearchPayment,
+  type ManagedWalletProviderId
 } from "@human-layer/db";
 import { NextRequest, NextResponse } from "next/server";
 
-import { buildWalletResearchPreview, getWalletResearchProvider } from "../../../lib/wallet-tools";
+import {
+  getWalletResearchProvider,
+  isWalletResearchProviderConfigured,
+  runWalletResearch
+} from "../../../lib/wallet-tools";
 import { getAuthenticatedProfileFromRequest } from "../../../lib/auth";
 import { assertProfileCanParticipate } from "../../../lib/safety";
+
+export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
   const viewer = await getAuthenticatedProfileFromRequest(request);
@@ -24,7 +31,7 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as
     | {
         pageId?: string;
-        provider?: "exa" | "perplexity" | "opus_46";
+        provider?: string;
       }
     | null;
 
@@ -46,26 +53,27 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "wallet spending is disabled" }, { status: 409 });
   }
 
-  const providerId =
-    body.provider && wallet.enabledProviders.includes(body.provider)
-      ? body.provider
+  const providerId: ManagedWalletProviderId =
+    body.provider && wallet.enabledProviders.includes(body.provider as ManagedWalletProviderId)
+      ? (body.provider as ManagedWalletProviderId)
       : wallet.defaultProvider;
   const provider = getWalletResearchProvider(providerId);
+  const configured = isWalletResearchProviderConfigured(provider.id);
 
   if (!wallet.enabledProviders.includes(provider.id)) {
     return NextResponse.json({ error: "provider disabled for this wallet" }, { status: 409 });
   }
 
-  if (wallet.availableCreditUsdCents < provider.priceUsdCents) {
+  if (configured && wallet.availableCreditUsdCents < provider.priceUsdCents) {
     return NextResponse.json({ error: "not enough wallet credit" }, { status: 409 });
   }
 
-  if (wallet.remainingDailyBudgetUsdCents < provider.priceUsdCents) {
+  if (configured && wallet.remainingDailyBudgetUsdCents < provider.priceUsdCents) {
     return NextResponse.json({ error: "daily wallet cap reached" }, { status: 409 });
   }
 
   const thread = await getPageThreadSnapshot(page.id, viewer.id);
-  const result = buildWalletResearchPreview({
+  const execution = await runWalletResearch({
     page,
     thread,
     providerId: provider.id
@@ -74,19 +82,20 @@ export async function POST(request: NextRequest) {
     profileId: viewer.id,
     pageId: page.id,
     provider: provider.id,
-    amountUsdCents: provider.priceUsdCents,
+    amountUsdCents: execution.chargedUsdCents,
     description: provider.label + ": " + page.title,
-    status: result.mode,
+    status: execution.result.mode,
     metadata: {
-      query: result.query,
+      query: execution.result.query,
       pageHost: page.host,
-      pageKind: page.pageKind
+      pageKind: page.pageKind,
+      providerConfigured: execution.providerConfigured
     }
   });
 
   return NextResponse.json({
     ok: true,
     payment,
-    result
+    result: execution.result
   });
 }

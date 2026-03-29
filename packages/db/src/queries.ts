@@ -96,7 +96,18 @@ export type NotificationPreferences = {
   followedTopicTakes: boolean;
 };
 
-export const MANAGED_WALLET_PROVIDERS = ["exa", "perplexity", "opus_46"] as const;
+export const MANAGED_WALLET_PROVIDERS = [
+  "exa",
+  "perplexity",
+  "opus_46",
+  "stableenrich_answer",
+  "stableenrich_search",
+  "stableenrich_contents",
+  "anybrowse_scrape",
+  "stableclaude_giga",
+  "parallel_search",
+  "twitsh_search"
+] as const;
 
 export type ManagedWalletProviderId = (typeof MANAGED_WALLET_PROVIDERS)[number];
 

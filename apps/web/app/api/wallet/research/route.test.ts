@@ -8,8 +8,9 @@ const mocks = vi.hoisted(() => ({
   recordWalletResearchPayment: vi.fn(),
   getAuthenticatedProfileFromRequest: vi.fn(),
   assertProfileCanParticipate: vi.fn(),
-  buildWalletResearchPreview: vi.fn(),
-  getWalletResearchProvider: vi.fn()
+  getWalletResearchProvider: vi.fn(),
+  isWalletResearchProviderConfigured: vi.fn(),
+  runWalletResearch: vi.fn()
 }));
 
 vi.mock("@human-layer/db", () => ({
@@ -28,8 +29,9 @@ vi.mock("../../../lib/safety", () => ({
 }));
 
 vi.mock("../../../lib/wallet-tools", () => ({
-  buildWalletResearchPreview: mocks.buildWalletResearchPreview,
-  getWalletResearchProvider: mocks.getWalletResearchProvider
+  getWalletResearchProvider: mocks.getWalletResearchProvider,
+  isWalletResearchProviderConfigured: mocks.isWalletResearchProviderConfigured,
+  runWalletResearch: mocks.runWalletResearch
 }));
 
 import { POST } from "./route";
@@ -56,6 +58,7 @@ describe("wallet research route", () => {
       label: "Exa research",
       priceUsdCents: 15
     });
+    mocks.isWalletResearchProviderConfigured.mockReturnValue(true);
     mocks.getPageThreadSnapshot.mockResolvedValue({
       verdictCounts: {
         useful: 1,
@@ -66,16 +69,20 @@ describe("wallet research route", () => {
       recentComments: [],
       topHumanTake: null
     });
-    mocks.buildWalletResearchPreview.mockReturnValue({
-      providerId: "exa",
-      providerLabel: "Exa research",
-      priceUsdCents: 15,
-      mode: "preview",
-      query: "Research this page",
-      summary: "Summary",
-      whyItMatters: "Why it matters",
-      bullets: ["A", "B"],
-      citations: []
+    mocks.runWalletResearch.mockResolvedValue({
+      chargedUsdCents: 15,
+      providerConfigured: true,
+      result: {
+        providerId: "exa",
+        providerLabel: "Exa research",
+        priceUsdCents: 15,
+        mode: "live",
+        query: "Research this page",
+        summary: "Summary",
+        whyItMatters: "Why it matters",
+        bullets: ["A", "B"],
+        citations: []
+      }
     });
     mocks.recordWalletResearchPayment.mockResolvedValue({
       eventId: "event-1",
@@ -138,11 +145,58 @@ describe("wallet research route", () => {
       provider: "exa",
       amountUsdCents: 15,
       description: "Exa research: Next.js",
-      status: "preview",
+      status: "live",
       metadata: {
         query: "Research this page",
         pageHost: "github.com",
-        pageKind: "github_repo"
+        pageKind: "github_repo",
+        providerConfigured: true
+      }
+    });
+    expect(response.status).toBe(200);
+  });
+
+  it("falls back to a free preview when no provider key is configured", async () => {
+    mocks.getAuthenticatedProfileFromRequest.mockResolvedValue({
+      id: "profile-1",
+      handle: "demo_builder"
+    });
+    mocks.isWalletResearchProviderConfigured.mockReturnValue(false);
+    mocks.runWalletResearch.mockResolvedValue({
+      chargedUsdCents: 0,
+      providerConfigured: false,
+      result: {
+        providerId: "exa",
+        providerLabel: "Exa research",
+        priceUsdCents: 15,
+        mode: "preview",
+        query: "Preview this page",
+        summary: "Summary",
+        whyItMatters: "Why it matters",
+        bullets: ["A", "B"],
+        citations: []
+      }
+    });
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/wallet/research", {
+        method: "POST",
+        body: JSON.stringify({ pageId: "page-1", provider: "exa" })
+      })
+    );
+
+    expect(mocks.recordWalletResearchPayment).toHaveBeenCalledWith({
+      profileId: "profile-1",
+      pageId: "page-1",
+      provider: "exa",
+      amountUsdCents: 0,
+      description: "Exa research: Next.js",
+      status: "preview",
+      metadata: {
+        query: "Preview this page",
+        pageHost: "github.com",
+        pageKind: "github_repo",
+        providerConfigured: false
       }
     });
     expect(response.status).toBe(200);

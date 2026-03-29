@@ -32,29 +32,17 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               <Link className="top-nav-brand" href="/">
                 Human Layer
               </Link>
-              <div className="top-nav-links">
-                <Link className="top-nav-link" href="/">
-                  Discover
-                </Link>
-                <Link className="top-nav-link" href="/search">
-                  Search
-                </Link>
-                <Link className="top-nav-link" href="/topics">
-                  Topics
-                </Link>
-                <Link className="top-nav-link" href="/metrics">
-                  Metrics
-                </Link>
-                <Link className="top-nav-link" href="/verify">
-                  Verify
-                </Link>
-                <Link className="top-nav-link" href="/bookmarks">
-                  Bookmarks
-                </Link>
-                <Link className="top-nav-link" href="/wallet">
-                  Wallet
-                </Link>
-                <Link className="top-nav-link top-nav-link-with-badge" href="/notifications">
+             <div className="top-nav-links">
+               <Link className="top-nav-link" href="/">
+                 Discover
+               </Link>
+               <Link className="top-nav-link" href="/verify">
+                 Verify
+               </Link>
+               <Link className="top-nav-link" href="/bookmarks">
+                 Bookmarks
+               </Link>
+               <Link className="top-nav-link top-nav-link-with-badge" href="/notifications">
                   Notifications
                   {unreadNotifications > 0 ? (
                     <span className="top-nav-link-badge">
@@ -62,18 +50,12 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                     </span>
                   ) : null}
                 </Link>
-                {canReview ? (
-                  <Link className="top-nav-link" href="/moderation">
-                    Moderation
-                  </Link>
-                ) : null}
-                <Link className="top-nav-link" href="/privacy">
-                  Privacy
-                </Link>
-                <Link className="top-nav-link" href="/support">
-                  Support
-                </Link>
-                <Link className="top-nav-link" href="/dev-login">
+               {canReview ? (
+                 <Link className="top-nav-link" href="/moderation">
+                   Moderation
+                 </Link>
+               ) : null}
+               <Link className="top-nav-link" href="/dev-login">
                   Dev Login
                 </Link>
               </div>
@@ -85,35 +67,11 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           <footer className="site-footer">
             <div className="site-footer-inner">
               <span className="site-footer-brand">Human Layer beta</span>
-              <div className="site-footer-links">
-                <Link className="site-footer-link" href="/">
-                  Discover
-                </Link>
-                <Link className="site-footer-link" href="/search">
-                  Search
-                </Link>
-                <Link className="site-footer-link" href="/topics">
-                  Topics
-                </Link>
-                <Link className="site-footer-link" href="/metrics">
-                  Metrics
-                </Link>
-                <Link className="site-footer-link" href="/bookmarks">
-                  Bookmarks
-                </Link>
-                <Link className="site-footer-link" href="/wallet">
-                  Wallet
-                </Link>
-                <Link className="site-footer-link" href="/notifications">
-                  Notifications
-                </Link>
-                <Link className="site-footer-link" href="/integrations">
-                  Propose integration
-                </Link>
-                <Link className="site-footer-link" href="/requested-integrations">
-                  Request board
-                </Link>
-                <Link className="site-footer-link" href="/privacy">
+             <div className="site-footer-links">
+               <Link className="site-footer-link" href="/">
+                 Discover
+               </Link>
+               <Link className="site-footer-link" href="/privacy">
                   Privacy
                 </Link>
                 {canReview ? (

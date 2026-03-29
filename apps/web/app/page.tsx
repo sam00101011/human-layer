@@ -73,22 +73,15 @@ export default async function HomePage(props: {
 
   return (
     <div className="page-shell stack">
-      <span className="pill pill-notify">Discovery is live</span>
-
       <section className="card hero-card stack">
         <div className="hero-row">
           <div className="stack compact">
             <div className="chip-row">
               <span className="pill">Discover</span>
-              <span className="trust-badge">Topics and graph depth</span>
-              {viewer ? <span className="trust-badge">Signed in as @{viewer.handle}</span> : null}
+              {viewer ? <span className="badge">Signed in as @{viewer.handle}</span> : null}
             </div>
-            <h1>Find the pages, takes, people, and topics worth paying attention to</h1>
-            <p className="muted">
-              Search the Human Layer graph, move laterally through topic surfaces like AI and
-              Devtools, spot the strongest verified takes, and use your follow graph to discover
-              new contributors and pages with actual overlap.
-            </p>
+            <h1>Pages, takes, and people worth your attention</h1>
+            <p className="muted">Trending verified content from the Human Layer graph.</p>
           </div>
           <div className="metric-grid compact-grid">
             <div className="stat-card">
@@ -98,10 +91,6 @@ export default async function HomePage(props: {
             <div className="stat-card">
               <strong>{recommendedTakes.length}</strong>
               <span className="muted">Recommended takes</span>
-            </div>
-            <div className="stat-card">
-              <strong>{topicSurfaces.length}</strong>
-              <span className="muted">Live topic surfaces</span>
             </div>
           </div>
         </div>
