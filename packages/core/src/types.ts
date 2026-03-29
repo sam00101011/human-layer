@@ -181,7 +181,15 @@ export const INTEREST_TAGS = [
   "economics",
   "history",
   "law",
-  "psychology"
+  "psychology",
+  "science",
+  "philosophy",
+  "careers",
+  "real_estate",
+  "home",
+  "nature",
+  "cars",
+  "pets"
 ] as const;
 
 export type InterestTag = (typeof INTEREST_TAGS)[number];

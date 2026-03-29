@@ -74,7 +74,15 @@ export const INTEREST_TAG_LABELS: Record<InterestTag, string> = {
   economics: "Economics",
   history: "History",
   law: "Law",
-  psychology: "Psychology"
+  psychology: "Psychology",
+  science: "Science",
+  philosophy: "Philosophy",
+  careers: "Careers",
+  real_estate: "Real estate",
+  home: "Home",
+  nature: "Nature",
+  cars: "Cars",
+  pets: "Pets"
 };
 
 export const INTEREST_GROUPS: InterestGroupDefinition[] = [
@@ -149,6 +157,8 @@ export const INTEREST_GROUPS: InterestGroupDefinition[] = [
       "beauty",
       "food",
       "travel",
+      "home",
+      "pets",
       "lifestyle",
       "creator_tools",
       "media"
@@ -158,13 +168,13 @@ export const INTEREST_GROUPS: InterestGroupDefinition[] = [
     id: "wellness-family",
     label: "Health and daily life",
     description: "Wellbeing, family, mental models, and life decisions beyond work.",
-    tags: ["health", "fitness", "psychology", "parenting", "education", "sports"]
+    tags: ["health", "fitness", "psychology", "parenting", "education", "sports", "careers"]
   },
   {
     id: "public-life",
     label: "Society and public life",
     description: "How people coordinate around institutions, policy, history, and the physical world.",
-    tags: ["climate", "energy", "politics", "economics", "history", "law", "governance", "communities"]
+    tags: ["climate", "energy", "politics", "economics", "history", "law", "governance", "communities", "science", "philosophy", "nature", "real_estate"]
   }
 ];
 
@@ -180,7 +190,9 @@ export const STARTER_INTEREST_TAGS: InterestTag[] = [
   "music",
   "travel",
   "sports",
-  "politics"
+  "politics",
+  "science",
+  "pets"
 ];
 
 export const FEATURED_TOPIC_TAGS: InterestTag[] = [
@@ -259,7 +271,15 @@ const INTEREST_RELATIONSHIPS: Partial<Record<InterestTag, InterestTag[]>> = {
   economics: ["politics", "markets", "fintech", "history", "law"],
   history: ["politics", "books", "education", "law", "economics"],
   law: ["politics", "economics", "privacy", "governance", "history"],
-  psychology: ["health", "parenting", "education", "product", "fitness"]
+  psychology: ["health", "parenting", "education", "product", "fitness"],
+  science: ["research", "education", "climate", "bio", "history"],
+  philosophy: ["books", "history", "psychology", "politics", "education"],
+  careers: ["education", "product", "growth", "psychology", "communities"],
+  real_estate: ["economics", "markets", "home", "lifestyle", "politics"],
+  home: ["real_estate", "lifestyle", "design", "food", "parenting"],
+  nature: ["climate", "travel", "photography", "health", "science"],
+  cars: ["markets", "travel", "design", "media", "lifestyle"],
+  pets: ["lifestyle", "health", "parenting", "communities", "home"]
 };
 
 const GROUP_BY_TAG = new Map(

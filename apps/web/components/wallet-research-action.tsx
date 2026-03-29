@@ -37,6 +37,7 @@ type WalletResearchActionProps = {
   initialProviderId: string;
   enabledProviders: string[];
   providers: ProviderOption[];
+  submitLabel?: string;
 };
 
 function formatUsd(cents: number) {
@@ -50,7 +51,8 @@ export function WalletResearchAction({
   linkedWalletAddress,
   initialProviderId,
   enabledProviders,
-  providers
+  providers,
+  submitLabel = "Research this page"
 }: WalletResearchActionProps) {
   const { address } = useAccount();
   const { connectAsync, connectors, isPending } = useConnect();
@@ -262,7 +264,7 @@ export function WalletResearchAction({
           ? "Connecting wallet..."
           : status === "running"
             ? "Running research..."
-            : "Research this page"}
+            : submitLabel}
       </button>
 
       {error ? <span className="error-message">{error}</span> : null}

@@ -11,7 +11,7 @@ import { getInterestTagLabel, type InterestTag } from "@human-layer/core";
 import { HelpfulButton } from "../../components/helpful-button";
 import { MarkNotificationsReadButton } from "../../components/mark-notifications-read-button";
 import { NotificationActions } from "../../components/notification-actions";
-import { NotificationPreferencesForm } from "../../components/notification-preferences-form";
+import { NotificationsSettingsPanel } from "../../components/notifications-settings-panel";
 import { ProfileHandleLink } from "../../components/profile-handle-link";
 import { getAuthenticatedProfileFromCookies } from "../lib/auth";
 
@@ -83,14 +83,22 @@ export default async function NotificationsPage() {
               Human Layer now tracks three live graphs for you: new takes from people you follow, fresh activity on bookmarked pages, and topic-specific signal across the interests you chose to follow.
             </p>
           </div>
-          <div className="metric-grid compact-grid">
-            <div className="stat-card">
-              <strong>{unreadCount}</strong>
-              <span className="muted">Unread</span>
-            </div>
-            <div className="stat-card">
-              <strong>{notifications.length}</strong>
-              <span className="muted">Recent notifications</span>
+          <div className="stack compact" style={{ alignItems: "flex-end" }}>
+            <NotificationsSettingsPanel
+              followedTopics={followedTopics}
+              initialBookmarkedPageComments={preferences.bookmarkedPageComments}
+              initialFollowedProfileTakes={preferences.followedProfileTakes}
+              initialFollowedTopicTakes={preferences.followedTopicTakes}
+            />
+            <div className="metric-grid compact-grid">
+              <div className="stat-card">
+                <strong>{unreadCount}</strong>
+                <span className="muted">Unread</span>
+              </div>
+              <div className="stat-card">
+                <strong>{notifications.length}</strong>
+                <span className="muted">Recent notifications</span>
+              </div>
             </div>
           </div>
         </div>
@@ -99,34 +107,7 @@ export default async function NotificationsPage() {
 
       <section className="card stack">
         <div className="section-header">
-          <h2>Notification controls</h2>
-          <span className="muted">Tune the graph, then mute pages or people directly from any notification below.</span>
-        </div>
-        <NotificationPreferencesForm
-          initialBookmarkedPageComments={preferences.bookmarkedPageComments}
-          initialFollowedProfileTakes={preferences.followedProfileTakes}
-          initialFollowedTopicTakes={preferences.followedTopicTakes}
-        />
-        {followedTopics.length > 0 ? (
-          <div className="stack compact">
-            <span className="eyebrow">Following topics</span>
-            <div className="chip-row">
-              {followedTopics.map((topic) => (
-                <Link className="chip" href={`/topics/${topic}`} key={topic}>
-                  {getInterestTagLabel(topic as InterestTag)}
-                </Link>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <p className="muted">You are not following any topics yet. Follow a topic to get a recurring signal layer beyond individual pages and people.</p>
-        )}
-      </section>
-
-      <section className="card stack">
-        <div className="section-header">
           <h2>Latest notifications</h2>
-          <span className="muted">Comments on bookmarked pages, new takes from followed people, and topic signal from the human graph.</span>
         </div>
         {notifications.length === 0 ? (
           <p className="muted">No notification activity yet. Bookmark pages and follow a few people to start the feed.</p>
@@ -186,7 +167,6 @@ export default async function NotificationsPage() {
       <section className="card stack">
         <div className="section-header">
           <h2>Follow graph</h2>
-          <span className="muted">The latest visible takes from profiles you already follow.</span>
         </div>
         {followedFeed.length === 0 ? (
           <p className="muted">You are not following anyone with visible takes yet.</p>

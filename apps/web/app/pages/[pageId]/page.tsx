@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { buildMediaMomentUrl, buildPageContextSummary, formatMediaTimestamp, type PageKind } from "@human-layer/core";
-import { findPageById, getPageSocialProof, getPageThreadSnapshot } from "@human-layer/db";
+import { findPageById, getManagedWalletSnapshot, getPageSocialProof, getPageThreadSnapshot } from "@human-layer/db";
 import { notFound } from "next/navigation";
 
 import { HelpfulButton } from "../../../components/helpful-button";
+import { PageWalletResearchModal } from "../../../components/page-wallet-research-modal";
 import { ProfileSafetyActions } from "../../../components/profile-safety-actions";
 import { ReportCommentButton } from "../../../components/report-comment-button";
 import { getAuthenticatedProfileFromCookies } from "../../lib/auth";
+import { getWalletResearchProviders } from "../../lib/wallet-tools";
 
 function formatPageKind(pageKind: string) {
   return pageKind.replace(/_/g, " ");
@@ -62,9 +64,11 @@ export default async function HumanLayerPage(props: {
 
   const thread = await getPageThreadSnapshot(page.id, viewer?.id);
   const socialProof = viewer ? await getPageSocialProof({ pageId: page.id, profileId: viewer.id }) : null;
+  const wallet = viewer ? await getManagedWalletSnapshot(viewer.id) : null;
   const pageContext = buildPageContextSummary({ page, thread });
   const verdictTotal = Object.values(thread.verdictCounts).reduce((sum, count) => sum + count, 0);
   const highlightedMoments = thread.recentComments.filter((comment) => comment.mediaTimestampSeconds != null).slice(0, 4);
+  const providers = getWalletResearchProviders();
 
   return (
     <div className="page-shell stack">
@@ -84,9 +88,15 @@ export default async function HumanLayerPage(props: {
               Open source page
             </Link>
             {viewer ? (
-              <Link className="button secondary" href={"/wallet?pageId=" + encodeURIComponent(page.id)}>
-                Research with wallet
-              </Link>
+              <PageWalletResearchModal
+                enabledProviders={wallet?.enabledProviders ?? []}
+                initialProviderId={wallet?.defaultProvider ?? null}
+                linkedWalletAddress={wallet?.walletAddress ?? null}
+                page={page}
+                pageId={page.id}
+                providers={providers}
+                thread={thread}
+              />
             ) : (
               <Link
                 className="button secondary"

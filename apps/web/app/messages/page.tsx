@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { getMessagingInboxForProfile } from "@human-layer/db";
+import { getManagedWalletSnapshot, getMessagingInboxForProfile } from "@human-layer/db";
 import { redirect } from "next/navigation";
 
 import { MessageRequestActions } from "../../components/message-request-actions";
 import { ProfileHandleLink } from "../../components/profile-handle-link";
-import { XmtpBindingForm } from "../../components/xmtp-binding-form";
+import { XmtpLiveChatShell } from "../../components/xmtp-live-chat-shell";
 import { getAuthenticatedProfileFromCookies } from "../lib/auth";
 
 function formatDateTime(value: string) {
@@ -74,7 +74,10 @@ export default async function MessagesPage() {
     redirect("/verify?returnUrl=/messages");
   }
 
-  const inbox = await getMessagingInboxForProfile(viewer.id);
+  const [inbox, wallet] = await Promise.all([
+    getMessagingInboxForProfile(viewer.id),
+    getManagedWalletSnapshot(viewer.id)
+  ]);
 
   return (
     <div className="page-shell stack">
@@ -87,8 +90,7 @@ export default async function MessagesPage() {
             </div>
             <h1>Messages</h1>
             <p className="muted">
-              Link your XMTP inbox, send verified-human message requests, and manage who can open a
-              conversation with you. Human Layer stores request state and inbox bindings, not chat contents.
+              Send verified-human message requests, then open a live XMTP thread from the wallet-linked browser session. Human Layer stores request state and inbox bindings, not chat contents.
             </p>
           </div>
         </div>
@@ -96,21 +98,14 @@ export default async function MessagesPage() {
 
       <section className="card stack">
         <div className="section-header">
-          <h2>XMTP inbox</h2>
-          <span className="muted">Bind the inbox ID you want other verified humans to reach.</span>
+          <h2>XMTP session</h2>
+          <span className="muted">Start from your linked wallet. Human Layer will save the resulting inbox ID automatically.</span>
         </div>
-        {inbox.binding ? (
-          <div className="wallet-meta-card">
-            <span className="muted small-copy">Linked inbox ID</span>
-            <code>{inbox.binding.inboxId}</code>
-            <span className="muted small-copy">Linked {formatDateTime(inbox.binding.createdAt)}</span>
-          </div>
-        ) : (
-          <p className="muted">
-            No inbox is linked yet. Link one below before you send or accept XMTP message requests.
-          </p>
-        )}
-        <XmtpBindingForm initialInboxId={inbox.binding?.inboxId ?? ""} />
+        <XmtpLiveChatShell
+          accepted={inbox.accepted}
+          initialInboxId={inbox.binding?.inboxId ?? null}
+          linkedWalletAddress={wallet?.walletAddress ?? null}
+        />
       </section>
 
       <section className="card stack">
@@ -133,13 +128,6 @@ export default async function MessagesPage() {
         <MessageList emptyCopy="No outgoing requests yet." items={inbox.outgoingPending} />
       </section>
 
-      <section className="card stack">
-        <div className="section-header">
-          <h2>Accepted connections</h2>
-          <span className="muted">Open verified-human connections with inbox IDs attached.</span>
-        </div>
-        <MessageList emptyCopy="No accepted connections yet." items={inbox.accepted} />
-      </section>
     </div>
   );
 }

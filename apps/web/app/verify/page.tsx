@@ -8,7 +8,6 @@ export default async function VerifyPage(props: {
 
   return (
     <div className="page-shell stack">
-      <span className="pill">Verification</span>
       <WorldIdVerifyForm
         handoff={searchParams.handoff === "1"}
         returnUrl={searchParams.returnUrl ?? ""}

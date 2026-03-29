@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getProfileSnapshotByHandle } from "@human-layer/db";
-import { getInterestTagLabel } from "@human-layer/core";
+import { getInterestTagLabel, isDemoProfileHandle } from "@human-layer/core";
 import { notFound } from "next/navigation";
 
 import { FollowProfileButton } from "../../../components/follow-profile-button";
@@ -71,6 +71,7 @@ export default async function ProfilePage(props: {
 
   const activity = profile.activity ?? [];
   const trustSignals = buildTrustSignals(profile);
+  const isDemoProfile = isDemoProfileHandle(profile.handle);
 
   return (
     <div className="page-shell stack">
@@ -84,13 +85,16 @@ export default async function ProfilePage(props: {
                   {profile.reputation.label}
                 </span>
               ) : null}
+              {isDemoProfile ? <span className="trust-badge demo-user-badge">Fake user, for demo only</span> : null}
               <span className="trust-badge">Pseudonymous</span>
               <span className="trust-badge">{activity.length > 0 ? "Activity visible" : "Public identity"}</span>
               <span className="eyebrow">Joined {formatDate(profile.createdAt)}</span>
             </div>
             <h1>@{profile.handle}</h1>
             <p className="muted">
-              {profile.verifiedHuman
+              {isDemoProfile
+                ? "This profile is seeded demo data for the hackathon build. It behaves like a verified-human profile in the graph, but the person and activity are synthetic."
+                : profile.verifiedHuman
                 ? "One verified human controls this pseudonymous identity. Trust comes from a mix of verification, visible contributions, and the pages this profile keeps coming back to."
                 : "This profile is not verified yet, so treat it as an unverified public identity."}
             </p>

@@ -301,7 +301,9 @@ export function WorldIdVerifyForm({
           pick your interests, then return to the same page with write actions enabled.
         </p>
         {worldIdConfig.mode === "mock" ? (
-          <div className="pill">Mock IDKit mode is active until app credentials are configured.</div>
+          <p className="muted small-copy">
+            Mock IDKit mode is active until app credentials are configured.
+          </p>
         ) : null}
       </div>
 

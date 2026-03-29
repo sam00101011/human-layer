@@ -1,3 +1,4 @@
+export * from "./demo-profiles";
 export * from "./interests";
 export * from "./media";
 export * from "./normalize";

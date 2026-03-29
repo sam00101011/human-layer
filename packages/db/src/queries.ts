@@ -1,5 +1,6 @@
 import {
   buildPageContextSummary,
+  DEMO_PROFILE_DEFINITIONS,
   EMPTY_VERDICT_COUNTS,
   getInterestTagDescription,
   getInterestTagLabel,
@@ -3788,18 +3789,96 @@ export async function ensureSeedProfiles(): Promise<{
   };
 }
 
+export async function ensureDemoProfiles(): Promise<Array<{
+  id: string;
+  handle: string;
+  interestTags: InterestTag[];
+}>> {
+  const rows: Array<{
+    id: string;
+    handle: string;
+    interestTags: InterestTag[];
+  }> = [];
+
+  for (const profile of DEMO_PROFILE_DEFINITIONS) {
+    const [inserted] = await db
+      .insert(profiles)
+      .values({
+        handle: profile.handle,
+        interestTags: profile.interestTags,
+        nullifierHash: profile.nullifierHash
+      })
+      .onConflictDoUpdate({
+        target: profiles.handle,
+        set: {
+          interestTags: profile.interestTags,
+          nullifierHash: profile.nullifierHash
+        }
+      })
+      .returning({
+        id: profiles.id,
+        handle: profiles.handle,
+        interestTags: profiles.interestTags
+      });
+
+    await db
+      .insert(worldIdVerifications)
+      .values({
+        profileId: inserted.id,
+        nullifierHash: profile.nullifierHash,
+        verificationLevel: profile.verificationLevel,
+        signal: "demo-profile"
+      })
+      .onConflictDoUpdate({
+        target: worldIdVerifications.nullifierHash,
+        set: {
+          profileId: inserted.id,
+          verificationLevel: profile.verificationLevel,
+          signal: "demo-profile"
+        }
+      });
+
+    rows.push(inserted);
+  }
+
+  return rows;
+}
+
 export async function createSeedComment(params: {
   pageId: string;
   profileId: string;
   body: string;
   helpfulProfileId?: string;
+  createdAt?: Date;
 }): Promise<void> {
+  const existing = await db.query.comments.findFirst({
+    where: and(
+      eq(comments.pageId, params.pageId),
+      eq(comments.profileId, params.profileId),
+      eq(comments.body, params.body)
+    )
+  });
+
+  if (existing) {
+    if (params.helpfulProfileId) {
+      await db
+        .insert(commentHelpfulVotes)
+        .values({
+          commentId: existing.id,
+          profileId: params.helpfulProfileId
+        })
+        .onConflictDoNothing();
+    }
+    return;
+  }
+
   const [comment] = await db
     .insert(comments)
     .values({
       pageId: params.pageId,
       profileId: params.profileId,
-      body: params.body
+      body: params.body,
+      createdAt: params.createdAt ?? new Date()
     })
     .onConflictDoNothing()
     .returning();
@@ -3807,10 +3886,13 @@ export async function createSeedComment(params: {
   if (!comment) return;
 
   if (params.helpfulProfileId) {
-    await db.insert(commentHelpfulVotes).values({
-      commentId: comment.id,
-      profileId: params.helpfulProfileId
-    });
+    await db
+      .insert(commentHelpfulVotes)
+      .values({
+        commentId: comment.id,
+        profileId: params.helpfulProfileId
+      })
+      .onConflictDoNothing();
   }
 }
 

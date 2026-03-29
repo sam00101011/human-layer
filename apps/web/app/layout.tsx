@@ -17,6 +17,8 @@ export const metadata: Metadata = {
   description: 'Verified-human context layer for the web',
 };
 
+const GITHUB_REPO_URL = 'https://github.com/sam00101011/human-layer';
+
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const viewer = await getAuthenticatedProfileFromCookies();
   const canReview = isAdminProfile(viewer);
@@ -71,20 +73,20 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                         className="top-nav-icon-link"
                         href="/messages"
                       >
-                        <MessageCircle aria-hidden="true" size={16} strokeWidth={2} />
+                        <MessageCircle aria-hidden="true" size={14} strokeWidth={2} />
                       </Link>
                       <Link
                         aria-label="Open wallet"
                         className="top-nav-icon-link"
                         href="/wallet"
                       >
-                        <Wallet aria-hidden="true" size={16} strokeWidth={2} />
+                        <Wallet aria-hidden="true" size={14} strokeWidth={2} />
                       </Link>
                       <Link
                         className="top-nav-profile-link"
                         href={`/profiles/${encodeURIComponent(viewer.handle)}`}
                       >
-                        <UserRound aria-hidden="true" size={16} strokeWidth={2} />
+                        <UserRound aria-hidden="true" size={14} strokeWidth={2} />
                         <span>@{viewer.handle}</span>
                       </Link>
                     </div>
@@ -115,6 +117,17 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                   </Link>
                   <Link className="site-footer-link" href="/support">
                     Support
+                  </Link>
+                  <Link className="site-footer-link" href="/metrics">
+                    Metrics
+                  </Link>
+                  <Link
+                    className="site-footer-link"
+                    href={GITHUB_REPO_URL}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    GitHub
                   </Link>
                 </div>
               </div>
