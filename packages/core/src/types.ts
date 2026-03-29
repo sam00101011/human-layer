@@ -160,7 +160,28 @@ export const INTEREST_TAGS = [
   "fintech",
   "defi",
   "trading",
-  "gaming"
+  "gaming",
+  "climate",
+  "energy",
+  "health",
+  "fitness",
+  "food",
+  "travel",
+  "fashion",
+  "beauty",
+  "sports",
+  "music",
+  "film",
+  "books",
+  "art",
+  "photography",
+  "parenting",
+  "lifestyle",
+  "politics",
+  "economics",
+  "history",
+  "law",
+  "psychology"
 ] as const;
 
 export type InterestTag = (typeof INTEREST_TAGS)[number];

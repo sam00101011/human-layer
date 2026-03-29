@@ -53,7 +53,28 @@ export const INTEREST_TAG_LABELS: Record<InterestTag, string> = {
   fintech: "Fintech",
   defi: "DeFi",
   trading: "Trading",
-  gaming: "Gaming"
+  gaming: "Gaming",
+  climate: "Climate",
+  energy: "Energy",
+  health: "Health",
+  fitness: "Fitness",
+  food: "Food",
+  travel: "Travel",
+  fashion: "Fashion",
+  beauty: "Beauty",
+  sports: "Sports",
+  music: "Music",
+  film: "Film",
+  books: "Books",
+  art: "Art",
+  photography: "Photography",
+  parenting: "Parenting",
+  lifestyle: "Lifestyle",
+  politics: "Politics",
+  economics: "Economics",
+  history: "History",
+  law: "Law",
+  psychology: "Psychology"
 };
 
 export const INTEREST_GROUPS: InterestGroupDefinition[] = [
@@ -113,6 +134,37 @@ export const INTEREST_GROUPS: InterestGroupDefinition[] = [
     label: "Finance and coordination",
     description: "Money rails, incentive systems, and market structure.",
     tags: ["crypto", "defi", "fintech", "trading", "markets", "governance"]
+  },
+  {
+    id: "culture-lifestyle",
+    label: "Culture and lifestyle",
+    description: "Creative work, taste, leisure, and the things people choose to spend time on.",
+    tags: [
+      "art",
+      "music",
+      "film",
+      "books",
+      "photography",
+      "fashion",
+      "beauty",
+      "food",
+      "travel",
+      "lifestyle",
+      "creator_tools",
+      "media"
+    ]
+  },
+  {
+    id: "wellness-family",
+    label: "Health and daily life",
+    description: "Wellbeing, family, mental models, and life decisions beyond work.",
+    tags: ["health", "fitness", "psychology", "parenting", "education", "sports"]
+  },
+  {
+    id: "public-life",
+    label: "Society and public life",
+    description: "How people coordinate around institutions, policy, history, and the physical world.",
+    tags: ["climate", "energy", "politics", "economics", "history", "law", "governance", "communities"]
   }
 ];
 
@@ -121,12 +173,14 @@ export const STARTER_INTEREST_TAGS: InterestTag[] = [
   "ai",
   "product",
   "growth",
-  "security",
-  "infra",
-  "startups",
   "design",
   "research",
-  "marketplaces"
+  "marketplaces",
+  "health",
+  "music",
+  "travel",
+  "sports",
+  "politics"
 ];
 
 export const FEATURED_TOPIC_TAGS: InterestTag[] = [
@@ -184,7 +238,28 @@ const INTEREST_RELATIONSHIPS: Partial<Record<InterestTag, InterestTag[]>> = {
   fintech: ["markets", "trading", "crypto", "enterprise", "defi"],
   defi: ["crypto", "fintech", "trading", "governance", "security"],
   trading: ["markets", "fintech", "crypto", "analytics", "data"],
-  gaming: ["design", "creator_tools", "communities", "mobile", "product"]
+  gaming: ["design", "creator_tools", "communities", "mobile", "product"],
+  climate: ["energy", "politics", "economics", "research", "communities"],
+  energy: ["climate", "infra", "markets", "politics", "economics"],
+  health: ["fitness", "psychology", "bio", "education", "food"],
+  fitness: ["health", "sports", "lifestyle", "food", "psychology"],
+  food: ["health", "travel", "lifestyle", "media", "communities"],
+  travel: ["food", "media", "lifestyle", "photography", "communities"],
+  fashion: ["beauty", "art", "creator_tools", "media", "lifestyle"],
+  beauty: ["fashion", "lifestyle", "creator_tools", "media", "health"],
+  sports: ["fitness", "media", "communities", "health", "gaming"],
+  music: ["art", "media", "creator_tools", "communities", "film"],
+  film: ["music", "media", "art", "books", "creator_tools"],
+  books: ["film", "art", "education", "history", "psychology"],
+  art: ["music", "film", "design", "photography", "fashion"],
+  photography: ["art", "travel", "creator_tools", "media", "design"],
+  parenting: ["health", "psychology", "education", "lifestyle", "communities"],
+  lifestyle: ["travel", "food", "beauty", "fashion", "fitness"],
+  politics: ["economics", "history", "law", "governance", "climate"],
+  economics: ["politics", "markets", "fintech", "history", "law"],
+  history: ["politics", "books", "education", "law", "economics"],
+  law: ["politics", "economics", "privacy", "governance", "history"],
+  psychology: ["health", "parenting", "education", "product", "fitness"]
 };
 
 const GROUP_BY_TAG = new Map(

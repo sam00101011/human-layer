@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { Inter } from 'next/font/google';
 import { getUnreadNotificationCount } from '@human-layer/db';
+import { MessageCircle, UserRound, Wallet } from 'lucide-react';
 
 import { WalletClientProvider } from '../components/wallet-client-provider';
 import { getAuthenticatedProfileFromCookies, isAdminProfile } from './lib/auth';
@@ -34,29 +35,60 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                 <Link className="top-nav-brand" href="/">
                   Human Layer
                 </Link>
-               <div className="top-nav-links">
-                 <Link className="top-nav-link" href="/">
-                   Discover
-                 </Link>
-                 <Link className="top-nav-link" href="/verify">
-                   Verify
-                 </Link>
-                 <Link className="top-nav-link" href="/bookmarks">
-                   Bookmarks
-                 </Link>
-                 <Link className="top-nav-link top-nav-link-with-badge" href="/notifications">
-                    Notifications
-                    {unreadNotifications > 0 ? (
-                      <span className="top-nav-link-badge">
-                        {unreadNotifications > 99 ? "99+" : unreadNotifications}
-                      </span>
+                <div className="top-nav-primary">
+                  <div className="top-nav-links">
+                    <Link className="top-nav-link" href="/">
+                      Discover
+                    </Link>
+                    <Link className="top-nav-link" href="/verify">
+                      Verify
+                    </Link>
+                    {viewer ? (
+                      <Link className="top-nav-link" href="/bookmarks">
+                        Bookmarks
+                      </Link>
                     ) : null}
-                  </Link>
-                 {canReview ? (
-                   <Link className="top-nav-link" href="/moderation">
-                     Moderation
-                   </Link>
-                 ) : null}
+                    {viewer ? (
+                      <Link className="top-nav-link top-nav-link-with-badge" href="/notifications">
+                        Notifications
+                        {unreadNotifications > 0 ? (
+                          <span className="top-nav-link-badge">
+                            {unreadNotifications > 99 ? "99+" : unreadNotifications}
+                          </span>
+                        ) : null}
+                      </Link>
+                    ) : null}
+                    {canReview ? (
+                      <Link className="top-nav-link" href="/moderation">
+                        Moderation
+                      </Link>
+                    ) : null}
+                  </div>
+                  {viewer ? (
+                    <div className="top-nav-actions">
+                      <Link
+                        aria-label="Open messages"
+                        className="top-nav-icon-link"
+                        href="/messages"
+                      >
+                        <MessageCircle aria-hidden="true" size={16} strokeWidth={2} />
+                      </Link>
+                      <Link
+                        aria-label="Open wallet"
+                        className="top-nav-icon-link"
+                        href="/wallet"
+                      >
+                        <Wallet aria-hidden="true" size={16} strokeWidth={2} />
+                      </Link>
+                      <Link
+                        className="top-nav-profile-link"
+                        href={`/profiles/${encodeURIComponent(viewer.handle)}`}
+                      >
+                        <UserRound aria-hidden="true" size={16} strokeWidth={2} />
+                        <span>@{viewer.handle}</span>
+                      </Link>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </nav>

@@ -3,7 +3,9 @@ import { getProfileSnapshotByHandle } from "@human-layer/db";
 import { getInterestTagLabel } from "@human-layer/core";
 import { notFound } from "next/navigation";
 
+import { FollowProfileButton } from "../../../components/follow-profile-button";
 import { HelpfulButton } from "../../../components/helpful-button";
+import { MessageRequestButton } from "../../../components/message-request-button";
 import { ProfileSafetyActions } from "../../../components/profile-safety-actions";
 import { ReportCommentButton } from "../../../components/report-comment-button";
 import { getAuthenticatedProfileFromCookies } from "../../lib/auth";
@@ -93,6 +95,12 @@ export default async function ProfilePage(props: {
                 : "This profile is not verified yet, so treat it as an unverified public identity."}
             </p>
           </div>
+          {viewer && viewer.id !== profile.id ? (
+            <div className="action-row">
+              <FollowProfileButton profileId={profile.id} />
+              <MessageRequestButton recipientHandle={profile.handle} recipientProfileId={profile.id} />
+            </div>
+          ) : null}
         </div>
 
         {profile.interestTags.length > 0 ? (

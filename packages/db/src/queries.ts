@@ -22,7 +22,7 @@ import {
   type ThreadSnapshot,
   type Verdict
 } from "@human-layer/core";
-import { and, desc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { createHash, randomBytes } from "node:crypto";
 
 import { db } from "./client";
@@ -33,6 +33,7 @@ import {
   comments,
   follows,
   managedWallets,
+  messageRequests,
   moderationAuditEvents,
   mutedPages,
   mutedProfiles,
@@ -46,6 +47,7 @@ import {
   topicFollows,
   verdicts,
   x402Events,
+  xmtpBindings,
   worldIdVerifications
 } from "./schema";
 
@@ -307,6 +309,36 @@ export type FollowRecommendedPage = DiscoveryPage & {
   bookmarkedByCount: number;
   bookmarkedByHandles: string[];
   reason: string;
+};
+
+export type XmtpBindingSnapshot = {
+  id: string;
+  inboxId: string;
+  createdAt: string;
+};
+
+export type MessageRequestPreview = {
+  id: string;
+  status: string;
+  createdAt: string;
+  senderProfileId: string;
+  senderHandle: string;
+  recipientProfileId: string;
+  recipientHandle: string;
+  peerProfileId: string;
+  peerHandle: string;
+  peerInboxId: string | null;
+  pageId: string | null;
+  pageTitle: string | null;
+  pageCanonicalUrl: string | null;
+  pageHost: string | null;
+};
+
+export type MessagingInboxSnapshot = {
+  binding: XmtpBindingSnapshot | null;
+  incomingPending: MessageRequestPreview[];
+  outgoingPending: MessageRequestPreview[];
+  accepted: MessageRequestPreview[];
 };
 
 export class HandleTakenError extends Error {
@@ -4459,4 +4491,337 @@ export async function followTopicForProfile(params: {
       topicTag: params.topic
     })
     .onConflictDoNothing();
+}
+
+export async function getXmtpBindingForProfile(
+  profileId: string
+): Promise<XmtpBindingSnapshot | null> {
+  const row = await db.query.xmtpBindings.findFirst({
+    where: eq(xmtpBindings.profileId, profileId)
+  });
+
+  if (!row) {
+    return null;
+  }
+
+  return {
+    id: row.id,
+    inboxId: row.inboxId,
+    createdAt: toIsoDateString(row.createdAt)
+  };
+}
+
+export async function linkXmtpBindingToProfile(params: {
+  profileId: string;
+  inboxId: string;
+}): Promise<XmtpBindingSnapshot> {
+  const inboxId = params.inboxId.trim();
+  if (!inboxId) {
+    throw new Error("inbox id required");
+  }
+
+  const existing = await db.query.xmtpBindings.findFirst({
+    where: eq(xmtpBindings.profileId, params.profileId)
+  });
+
+  if (existing) {
+    await db
+      .update(xmtpBindings)
+      .set({
+        inboxId
+      })
+      .where(eq(xmtpBindings.id, existing.id));
+  } else {
+    await db.insert(xmtpBindings).values({
+      profileId: params.profileId,
+      inboxId
+    });
+  }
+
+  const binding = await getXmtpBindingForProfile(params.profileId);
+  if (!binding) {
+    throw new Error("xmtp bind failed");
+  }
+
+  return binding;
+}
+
+type MessageRequestRow = {
+  id: string;
+  status: string;
+  createdAt: Date;
+  senderProfileId: string;
+  recipientProfileId: string;
+  pageId: string | null;
+  pageTitle: string | null;
+  pageCanonicalUrl: string | null;
+  pageHost: string | null;
+};
+
+async function enrichMessageRequests(
+  rows: MessageRequestRow[],
+  viewerProfileId: string
+): Promise<MessageRequestPreview[]> {
+  if (rows.length === 0) {
+    return [];
+  }
+
+  const profileIds = [...new Set(rows.flatMap((row) => [row.senderProfileId, row.recipientProfileId]))];
+  const [profileRows, bindingRows] = await Promise.all([
+    db
+      .select({
+        id: profiles.id,
+        handle: profiles.handle
+      })
+      .from(profiles)
+      .where(inArray(profiles.id, profileIds)),
+    db
+      .select({
+        profileId: xmtpBindings.profileId,
+        inboxId: xmtpBindings.inboxId
+      })
+      .from(xmtpBindings)
+      .where(inArray(xmtpBindings.profileId, profileIds))
+  ]);
+
+  const handleMap = new Map(profileRows.map((row) => [row.id, row.handle]));
+  const inboxMap = new Map(bindingRows.map((row) => [row.profileId, row.inboxId]));
+
+  return rows.map((row) => {
+    const senderHandle = handleMap.get(row.senderProfileId) ?? "unknown";
+    const recipientHandle = handleMap.get(row.recipientProfileId) ?? "unknown";
+    const peerProfileId =
+      row.senderProfileId === viewerProfileId ? row.recipientProfileId : row.senderProfileId;
+    const peerHandle = handleMap.get(peerProfileId) ?? "unknown";
+
+    return {
+      id: row.id,
+      status: row.status,
+      createdAt: toIsoDateString(row.createdAt),
+      senderProfileId: row.senderProfileId,
+      senderHandle,
+      recipientProfileId: row.recipientProfileId,
+      recipientHandle,
+      peerProfileId,
+      peerHandle,
+      peerInboxId: inboxMap.get(peerProfileId) ?? null,
+      pageId: row.pageId,
+      pageTitle: row.pageTitle,
+      pageCanonicalUrl: row.pageCanonicalUrl,
+      pageHost: row.pageHost
+    };
+  });
+}
+
+export async function createProfileMessageRequest(params: {
+  senderProfileId: string;
+  recipientProfileId: string;
+  pageId?: string | null;
+}): Promise<{ id: string; existing: boolean }> {
+  if (params.senderProfileId === params.recipientProfileId) {
+    throw new Error("cannot message yourself");
+  }
+
+  const profileRows = await db
+    .select({
+      id: profiles.id,
+      handle: profiles.handle,
+      nullifierHash: profiles.nullifierHash,
+      blockedAt: profiles.blockedAt
+    })
+    .from(profiles)
+    .where(inArray(profiles.id, [params.senderProfileId, params.recipientProfileId]));
+
+  const sender = profileRows.find((row) => row.id === params.senderProfileId) ?? null;
+  const recipient = profileRows.find((row) => row.id === params.recipientProfileId) ?? null;
+
+  if (!sender || !recipient) {
+    throw new Error("profile not found");
+  }
+
+  if (!sender.nullifierHash || !recipient.nullifierHash) {
+    throw new Error("verified humans only");
+  }
+
+  if (sender.blockedAt) {
+    throw new Error("account restricted");
+  }
+
+  if (recipient.blockedAt) {
+    throw new Error("recipient unavailable");
+  }
+
+  const blocked = await db.query.blockedProfiles.findFirst({
+    where: or(
+      and(
+        eq(blockedProfiles.profileId, params.senderProfileId),
+        eq(blockedProfiles.blockedProfileId, params.recipientProfileId)
+      ),
+      and(
+        eq(blockedProfiles.profileId, params.recipientProfileId),
+        eq(blockedProfiles.blockedProfileId, params.senderProfileId)
+      )
+    )
+  });
+
+  if (blocked) {
+    throw new Error("messaging unavailable between these profiles");
+  }
+
+  const [senderBinding, recipientBinding] = await Promise.all([
+    getXmtpBindingForProfile(params.senderProfileId),
+    getXmtpBindingForProfile(params.recipientProfileId)
+  ]);
+
+  if (!senderBinding) {
+    throw new Error("link your XMTP inbox first");
+  }
+
+  if (!recipientBinding) {
+    throw new Error("recipient has not linked XMTP yet");
+  }
+
+  const existingAccepted = await db.query.messageRequests.findFirst({
+    where: and(
+      or(
+        and(
+          eq(messageRequests.senderProfileId, params.senderProfileId),
+          eq(messageRequests.recipientProfileId, params.recipientProfileId)
+        ),
+        and(
+          eq(messageRequests.senderProfileId, params.recipientProfileId),
+          eq(messageRequests.recipientProfileId, params.senderProfileId)
+        )
+      ),
+      eq(messageRequests.status, "accepted"),
+      eq(messageRequests.hidden, false)
+    )
+  });
+
+  if (existingAccepted) {
+    throw new Error("message channel already open");
+  }
+
+  const reversePending = await db.query.messageRequests.findFirst({
+    where: and(
+      eq(messageRequests.senderProfileId, params.recipientProfileId),
+      eq(messageRequests.recipientProfileId, params.senderProfileId),
+      eq(messageRequests.status, "pending"),
+      eq(messageRequests.hidden, false)
+    )
+  });
+
+  if (reversePending) {
+    throw new Error("this person has already sent you a request");
+  }
+
+  const existingPending = await db.query.messageRequests.findFirst({
+    where: and(
+      eq(messageRequests.senderProfileId, params.senderProfileId),
+      eq(messageRequests.recipientProfileId, params.recipientProfileId),
+      eq(messageRequests.status, "pending"),
+      eq(messageRequests.hidden, false)
+    )
+  });
+
+  if (existingPending) {
+    return {
+      id: existingPending.id,
+      existing: true
+    };
+  }
+
+  const [inserted] = await db
+    .insert(messageRequests)
+    .values({
+      senderProfileId: params.senderProfileId,
+      recipientProfileId: params.recipientProfileId,
+      pageId: params.pageId ?? null,
+      reasonCode: params.pageId ? "page_context" : "direct_profile",
+      status: "pending"
+    })
+    .returning({
+      id: messageRequests.id
+    });
+
+  return {
+    id: inserted.id,
+    existing: false
+  };
+}
+
+export async function respondToMessageRequest(params: {
+  profileId: string;
+  requestId: string;
+  action: "accept" | "ignore";
+}): Promise<void> {
+  const row = await db.query.messageRequests.findFirst({
+    where: eq(messageRequests.id, params.requestId)
+  });
+
+  if (!row) {
+    throw new Error("message request not found");
+  }
+
+  if (row.recipientProfileId !== params.profileId) {
+    throw new Error("not allowed");
+  }
+
+  if (row.status !== "pending") {
+    return;
+  }
+
+  await db
+    .update(messageRequests)
+    .set({
+      status: params.action === "accept" ? "accepted" : "ignored",
+      hidden: params.action === "ignore"
+    })
+    .where(eq(messageRequests.id, params.requestId));
+}
+
+export async function getMessagingInboxForProfile(
+  profileId: string
+): Promise<MessagingInboxSnapshot> {
+  const [binding, rows] = await Promise.all([
+    getXmtpBindingForProfile(profileId),
+    db
+      .select({
+        id: messageRequests.id,
+        status: messageRequests.status,
+        createdAt: messageRequests.createdAt,
+        senderProfileId: messageRequests.senderProfileId,
+        recipientProfileId: messageRequests.recipientProfileId,
+        pageId: messageRequests.pageId,
+        pageTitle: pages.title,
+        pageCanonicalUrl: pages.canonicalUrl,
+        pageHost: pages.host
+      })
+      .from(messageRequests)
+      .leftJoin(pages, eq(pages.id, messageRequests.pageId))
+      .where(
+        and(
+          or(
+            eq(messageRequests.senderProfileId, profileId),
+            eq(messageRequests.recipientProfileId, profileId)
+          ),
+          eq(messageRequests.hidden, false)
+        )
+      )
+      .orderBy(desc(messageRequests.createdAt))
+      .limit(100)
+  ]);
+
+  const previews = await enrichMessageRequests(rows, profileId);
+
+  return {
+    binding,
+    incomingPending: previews.filter(
+      (item) => item.status === "pending" && item.recipientProfileId === profileId
+    ),
+    outgoingPending: previews.filter(
+      (item) => item.status === "pending" && item.senderProfileId === profileId
+    ),
+    accepted: previews.filter((item) => item.status === "accepted")
+  };
 }
