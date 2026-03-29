@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { ensureManagedWalletForProfile } from "@human-layer/db";
+
+import { getAuthenticatedProfileFromCookies } from "../lib/auth";
 
 const extensionDownloadPath = "/downloads/human-layer-extension-hackathon.zip";
 
@@ -11,6 +14,13 @@ export default async function InstallExtensionPage(props: {
       ? searchParams.next
       : "/";
   const source = searchParams.source?.trim();
+  const viewer = await getAuthenticatedProfileFromCookies();
+  const wallet = viewer
+    ? await ensureManagedWalletForProfile({
+        profileId: viewer.id,
+        handle: viewer.handle
+      })
+    : null;
 
   return (
     <div className="page-shell stack legal-shell">
@@ -35,6 +45,35 @@ export default async function InstallExtensionPage(props: {
           </Link>
         </div>
       </section>
+
+      {wallet ? (
+        <section className="card stack">
+          <div className="section-header">
+            <h2>Your wallet is ready</h2>
+            <span className="muted">Managed beta wallet with built-in paid tool access.</span>
+          </div>
+          <div className="metric-grid">
+            <div className="stat-card">
+              <strong>{"$" + (wallet.availableCreditUsdCents / 100).toFixed(2)}</strong>
+              <span className="muted">Available credit</span>
+            </div>
+            <div className="stat-card">
+              <strong>{"$" + (wallet.dailySpendLimitUsdCents / 100).toFixed(2)}</strong>
+              <span className="muted">Daily cap</span>
+            </div>
+          </div>
+          <p className="muted">
+            Verification now auto-provisions your Human Layer wallet, so you can unlock x402-style
+            research and tool usage without separate crypto setup.
+          </p>
+          <div className="chip-row">
+            <Link className="button" href="/wallet">
+              Open wallet
+            </Link>
+            <span className="trust-badge soft">{wallet.walletAddress}</span>
+          </div>
+        </section>
+      ) : null}
 
       <section className="card stack">
         <div className="section-header">
@@ -72,6 +111,9 @@ export default async function InstallExtensionPage(props: {
         <div className="chip-row">
           <Link className="button secondary" href={nextPath}>
             Open your profile
+          </Link>
+          <Link className="button secondary" href="/wallet">
+            Open wallet
           </Link>
           <Link className="button secondary" href="/">
             Go to Discover

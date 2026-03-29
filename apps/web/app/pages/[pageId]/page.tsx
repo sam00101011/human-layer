@@ -83,6 +83,18 @@ export default async function HumanLayerPage(props: {
             <Link className="button" href={page.canonicalUrl} rel="noreferrer" target="_blank">
               Open source page
             </Link>
+            {viewer ? (
+              <Link className="button secondary" href={"/wallet?pageId=" + encodeURIComponent(page.id)}>
+                Research with wallet
+              </Link>
+            ) : (
+              <Link
+                className="button secondary"
+                href={"/verify?returnUrl=" + encodeURIComponent("/wallet?pageId=" + page.id)}
+              >
+                Verify to unlock wallet
+              </Link>
+            )}
             {thread.topHumanTake ? (
               <Link
                 className="button secondary"

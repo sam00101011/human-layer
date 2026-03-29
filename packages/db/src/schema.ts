@@ -363,6 +363,38 @@ export const supportedDomains = pgTable("supported_domains", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
 });
 
+export const managedWallets = pgTable(
+  "managed_wallets",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    profileId: uuid("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    walletAddress: text("wallet_address").notNull(),
+    walletLabel: text("wallet_label").notNull().default("Human Layer Wallet"),
+    network: text("network").notNull().default("base"),
+    status: text("status").notNull().default("active"),
+    passkeyReady: boolean("passkey_ready").default(true).notNull(),
+    spendingEnabled: boolean("spending_enabled").default(true).notNull(),
+    availableCreditUsdCents: integer("available_credit_usd_cents").default(2500).notNull(),
+    dailySpendLimitUsdCents: integer("daily_spend_limit_usd_cents").default(1000).notNull(),
+    defaultProvider: text("default_provider").notNull().default("exa"),
+    enabledProviders: jsonb("enabled_providers")
+      .$type<string[]>()
+      .default(["exa", "perplexity", "opus_46"])
+      .notNull(),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    profileUnique: uniqueIndex("managed_wallets_profile_id_unique").on(table.profileId),
+    walletAddressUnique: uniqueIndex("managed_wallets_wallet_address_unique").on(
+      table.walletAddress
+    )
+  })
+);
+
 export const xmtpBindings = pgTable(
   "xmtp_bindings",
   {
@@ -381,9 +413,15 @@ export const xmtpBindings = pgTable(
 
 export const x402Events = pgTable("x402_events", {
   id: uuid("id").defaultRandom().primaryKey(),
+  profileId: uuid("profile_id").references(() => profiles.id, { onDelete: "set null" }),
+  walletId: uuid("wallet_id").references(() => managedWallets.id, { onDelete: "set null" }),
+  pageId: uuid("page_id").references(() => pages.id, { onDelete: "set null" }),
   kind: text("kind").notNull(),
+  provider: text("provider"),
+  description: text("description"),
   status: text("status").notNull(),
   amountUsdCents: integer("amount_usd_cents").notNull().default(0),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
 });
 

@@ -1,6 +1,7 @@
 import { INTEREST_TAGS, MAX_PROFILE_INTERESTS, type InterestTag } from "@human-layer/core";
 import type { IDKitResult } from "@worldcoin/idkit";
 import {
+  ensureManagedWalletForProfile,
   HandleTakenError,
   createSessionForProfile,
   upsertVerifiedProfile
@@ -97,6 +98,10 @@ export async function POST(request: NextRequest) {
       signal: verification.signal
     });
 
+   await ensureManagedWalletForProfile({
+      profileId: profile.id,
+      handle: profile.handle
+   });
    const rawToken = await createSessionForProfile(profile.id);
    const redirectTo = body?.handoff
      ? `/auth/extension-handoff?returnUrl=${encodeURIComponent(body.returnUrl ?? "")}`

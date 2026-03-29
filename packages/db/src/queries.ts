@@ -32,6 +32,7 @@ import {
   commentReports,
   comments,
   follows,
+  managedWallets,
   moderationAuditEvents,
   mutedPages,
   mutedProfiles,
@@ -44,6 +45,7 @@ import {
   supportedDomains,
   topicFollows,
   verdicts,
+  x402Events,
   worldIdVerifications
 } from "./schema";
 
@@ -92,6 +94,47 @@ export type NotificationPreferences = {
   bookmarkedPageComments: boolean;
   followedProfileTakes: boolean;
   followedTopicTakes: boolean;
+};
+
+export const MANAGED_WALLET_PROVIDERS = ["exa", "perplexity", "opus_46"] as const;
+
+export type ManagedWalletProviderId = (typeof MANAGED_WALLET_PROVIDERS)[number];
+
+export type WalletPaymentEvent = {
+  id: string;
+  kind: string;
+  status: string;
+  amountUsdCents: number;
+  provider: ManagedWalletProviderId | null;
+  description: string | null;
+  pageId: string | null;
+  pageTitle: string | null;
+  createdAt: string;
+};
+
+export type ManagedWalletSnapshot = {
+  walletId: string;
+  walletAddress: string;
+  walletLabel: string;
+  network: string;
+  status: string;
+  passkeyReady: boolean;
+  spendingEnabled: boolean;
+  availableCreditUsdCents: number;
+  dailySpendLimitUsdCents: number;
+  defaultProvider: ManagedWalletProviderId;
+  enabledProviders: ManagedWalletProviderId[];
+  lastUsedAt: string | null;
+  createdAt: string;
+  spentTodayUsdCents: number;
+  remainingDailyBudgetUsdCents: number;
+  paymentHistory: WalletPaymentEvent[];
+};
+
+export type WalletResearchPaymentRecord = {
+  eventId: string;
+  remainingCreditUsdCents: number;
+  remainingDailyBudgetUsdCents: number;
 };
 
 export type FollowGraphItem = {
@@ -1182,6 +1225,31 @@ function getFreshnessBoost(createdAt: Date | string): number {
 
 function toIsoDateString(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
+
+function createManagedWalletAddress(profileId: string): string {
+  return "0x" + createHash("sha256").update("managed-wallet:" + profileId).digest("hex").slice(0, 40);
+}
+
+function sanitizeManagedWalletProvider(
+  provider: string | null | undefined
+): ManagedWalletProviderId {
+  if (provider && MANAGED_WALLET_PROVIDERS.includes(provider as ManagedWalletProviderId)) {
+    return provider as ManagedWalletProviderId;
+  }
+
+  return "exa";
+}
+
+function sanitizeManagedWalletProviders(
+  input: string[] | null | undefined
+): ManagedWalletProviderId[] {
+  const values = Array.isArray(input) ? input : [];
+  const unique = [...new Set(values)]
+    .map((value) => sanitizeManagedWalletProvider(value))
+    .filter((value, index, array) => array.indexOf(value) === index);
+
+  return unique.length > 0 ? unique : ["exa"];
 }
 
 function rankTakeLikeSignal(params: {
@@ -2508,6 +2576,183 @@ export async function createSessionForProfile(profileId: string): Promise<string
     expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7)
   });
   return rawToken;
+}
+
+export async function ensureManagedWalletForProfile(params: {
+  profileId: string;
+  handle?: string | null;
+}): Promise<ManagedWalletSnapshot> {
+  const existing = await db.query.managedWallets.findFirst({
+    where: eq(managedWallets.profileId, params.profileId)
+  });
+
+  if (!existing) {
+    await db
+      .insert(managedWallets)
+      .values({
+        profileId: params.profileId,
+        walletAddress: createManagedWalletAddress(params.profileId),
+        walletLabel: params.handle ? "@" + params.handle + " wallet" : "Human Layer Wallet"
+      })
+      .onConflictDoNothing({ target: managedWallets.profileId });
+  }
+
+  const snapshot = await getManagedWalletSnapshot(params.profileId);
+  if (!snapshot) {
+    throw new Error("wallet provisioning failed");
+  }
+
+  return snapshot;
+}
+
+export async function getManagedWalletSnapshot(
+  profileId: string
+): Promise<ManagedWalletSnapshot | null> {
+  const wallet = await db.query.managedWallets.findFirst({
+    where: eq(managedWallets.profileId, profileId)
+  });
+
+  if (!wallet) return null;
+
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const [spentTodayRows, paymentRows] = await Promise.all([
+    db
+      .select({
+        total: sql<number>`coalesce(sum(${x402Events.amountUsdCents}), 0)::int`
+      })
+      .from(x402Events)
+      .where(
+        and(
+          eq(x402Events.profileId, profileId),
+          ne(x402Events.status, "failed"),
+          sql`${x402Events.createdAt} >= ${startOfDay.toISOString()}::timestamptz`
+        )
+      ),
+    db
+      .select({
+        id: x402Events.id,
+        kind: x402Events.kind,
+        status: x402Events.status,
+        amountUsdCents: x402Events.amountUsdCents,
+        provider: x402Events.provider,
+        description: x402Events.description,
+        pageId: x402Events.pageId,
+        pageTitle: pages.title,
+        createdAt: x402Events.createdAt
+      })
+      .from(x402Events)
+      .leftJoin(pages, eq(pages.id, x402Events.pageId))
+      .where(eq(x402Events.profileId, profileId))
+      .orderBy(desc(x402Events.createdAt))
+      .limit(12)
+  ]);
+
+  const spentTodayUsdCents = spentTodayRows[0]?.total ?? 0;
+
+  return {
+    walletId: wallet.id,
+    walletAddress: wallet.walletAddress,
+    walletLabel: wallet.walletLabel,
+    network: wallet.network,
+    status: wallet.status,
+    passkeyReady: wallet.passkeyReady,
+    spendingEnabled: wallet.spendingEnabled,
+    availableCreditUsdCents: wallet.availableCreditUsdCents,
+    dailySpendLimitUsdCents: wallet.dailySpendLimitUsdCents,
+    defaultProvider: sanitizeManagedWalletProvider(wallet.defaultProvider),
+    enabledProviders: sanitizeManagedWalletProviders(wallet.enabledProviders),
+    lastUsedAt: wallet.lastUsedAt ? toIsoDateString(wallet.lastUsedAt) : null,
+    createdAt: toIsoDateString(wallet.createdAt),
+    spentTodayUsdCents,
+    remainingDailyBudgetUsdCents: Math.max(0, wallet.dailySpendLimitUsdCents - spentTodayUsdCents),
+    paymentHistory: paymentRows.map((row) => ({
+      id: row.id,
+      kind: row.kind,
+      status: row.status,
+      amountUsdCents: row.amountUsdCents,
+      provider: row.provider ? sanitizeManagedWalletProvider(row.provider) : null,
+      description: row.description,
+      pageId: row.pageId,
+      pageTitle: row.pageTitle,
+      createdAt: toIsoDateString(row.createdAt)
+    }))
+  };
+}
+
+export async function updateManagedWalletSettings(params: {
+  profileId: string;
+  spendingEnabled: boolean;
+  dailySpendLimitUsdCents: number;
+  defaultProvider: ManagedWalletProviderId;
+  enabledProviders: ManagedWalletProviderId[];
+}): Promise<ManagedWalletSnapshot> {
+  const wallet = await ensureManagedWalletForProfile({ profileId: params.profileId });
+  const enabledProviders = sanitizeManagedWalletProviders(params.enabledProviders);
+  const defaultProvider = enabledProviders.includes(params.defaultProvider)
+    ? params.defaultProvider
+    : enabledProviders[0];
+
+  await db
+    .update(managedWallets)
+    .set({
+      spendingEnabled: params.spendingEnabled,
+      dailySpendLimitUsdCents: Math.max(100, params.dailySpendLimitUsdCents),
+      defaultProvider,
+      enabledProviders,
+      updatedAt: new Date()
+    })
+    .where(eq(managedWallets.id, wallet.walletId));
+
+  return ensureManagedWalletForProfile({ profileId: params.profileId });
+}
+
+export async function recordWalletResearchPayment(params: {
+  profileId: string;
+  pageId: string;
+  provider: ManagedWalletProviderId;
+  amountUsdCents: number;
+  description: string;
+  status: string;
+  metadata?: Record<string, unknown>;
+}): Promise<WalletResearchPaymentRecord> {
+  const wallet = await ensureManagedWalletForProfile({ profileId: params.profileId });
+  const nextCredit = Math.max(0, wallet.availableCreditUsdCents - params.amountUsdCents);
+
+  await db.transaction(async (tx) => {
+    await tx.insert(x402Events).values({
+      profileId: params.profileId,
+      walletId: wallet.walletId,
+      pageId: params.pageId,
+      kind: "wallet_research",
+      provider: params.provider,
+      description: params.description,
+      status: params.status,
+      amountUsdCents: params.amountUsdCents,
+      metadata: params.metadata ?? {}
+    });
+
+    await tx
+      .update(managedWallets)
+      .set({
+        availableCreditUsdCents: nextCredit,
+        lastUsedAt: new Date(),
+        updatedAt: new Date()
+      })
+      .where(eq(managedWallets.id, wallet.walletId));
+  });
+
+  const updated = await getManagedWalletSnapshot(params.profileId);
+  if (!updated) {
+    throw new Error("wallet payment record missing");
+  }
+
+  return {
+    eventId: updated.paymentHistory[0]?.id ?? "",
+    remainingCreditUsdCents: updated.availableCreditUsdCents,
+    remainingDailyBudgetUsdCents: updated.remainingDailyBudgetUsdCents
+  };
 }
 
 export async function getSessionProfileByRawToken(rawToken: string): Promise<{
