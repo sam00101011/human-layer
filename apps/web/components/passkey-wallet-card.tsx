@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useAccount, useConnect } from "wagmi";
 
+import { getWalletConnectErrorMessage } from "../app/lib/wallet-connect-errors";
+
 type PasskeyWalletCardProps = {
   linkedWalletAddress?: string | null;
   linkedWalletProvider?: string | null;
@@ -100,9 +102,9 @@ export function PasskeyWalletCard({
       }
 
       await linkWallet(nextAddress);
-    } catch {
+    } catch (nextError) {
       setStatus(null);
-      setError("Could not connect your passkey wallet.");
+      setError(getWalletConnectErrorMessage(nextError));
     }
   }
 

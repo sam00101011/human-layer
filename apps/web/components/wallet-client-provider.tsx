@@ -11,7 +11,9 @@ export const walletConfig = createConfig({
   connectors: [
     coinbaseWallet({
       appName: "Human Layer",
-      preference: "smartWalletOnly"
+      preference: {
+        options: "smartWalletOnly"
+      }
     })
   ],
   transports: {

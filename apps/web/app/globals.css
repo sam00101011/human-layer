@@ -133,9 +133,11 @@ p {
   flex-shrink: 0;
 }
 
+.world-id-logo img,
 .world-id-logo svg {
   width: 100%;
   height: 100%;
+  object-fit: contain;
 }
 
 /* ===== Card ===== */

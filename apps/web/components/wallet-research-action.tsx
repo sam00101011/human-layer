@@ -10,6 +10,7 @@ import {
   runClientWalletResearch,
   type WalletResearchResult
 } from "../app/lib/wallet-tools";
+import { getWalletConnectErrorMessage } from "../app/lib/wallet-connect-errors";
 
 type ProviderOption = {
   id: ManagedWalletProviderId;
@@ -120,8 +121,8 @@ export function WalletResearchAction({
 
       setStatus("idle");
       return nextAddress as `0x${string}`;
-    } catch {
-      setError("Could not connect your passkey wallet.");
+    } catch (nextError) {
+      setError(getWalletConnectErrorMessage(nextError));
       setStatus("idle");
       return null;
     }
