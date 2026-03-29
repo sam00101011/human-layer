@@ -1,9 +1,14 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { pool } from "./client";
-
 async function main() {
+  if (!process.env.DATABASE_URL) {
+    throw new Error(
+      "DATABASE_URL must be set explicitly to run migrations. Refusing to use the localhost fallback."
+    );
+  }
+
+  const { pool } = await import("./client");
   const drizzleDir = join(process.cwd(), "drizzle");
   const files = (await readdir(drizzleDir))
     .filter((file) => file.endsWith(".sql"))
@@ -19,6 +24,7 @@ async function main() {
 
 main().catch(async (error) => {
   console.error(error);
+  const { pool } = await import("./client");
   await pool.end();
   process.exit(1);
 });
