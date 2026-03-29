@@ -1,126 +1,115 @@
 # Human Layer
 
-Human Layer is a verified-human layer for the web. This folder now contains both the concrete MVP decision pack and the working Phase 0 plus Phase 1 code scaffold for the browser-extension-first build.
+Human Layer is a verified-human context layer for the web.
 
-## Current status
+It sits on top of the websites people already use and adds portable trust:
+- verified-human profiles
+- page-level takes and verdicts
+- topic and people follows
+- wallet-signed paid actions
+- secure messaging between verified humans
 
-Phase 1 identity and onboarding are in place:
-- monorepo workspace in this folder
-- Next.js web app in `apps/web`
-- WXT browser extension in `apps/extension`
-- shared types and URL normalization in `packages/core`
-- Drizzle schema, migration, and seeding in `packages/db`
-- World ID verification flow with the real IDKit widget in remote mode plus mock mode for local development
-- verified profile creation with explicit interest tags
-- profile pages and extension handoff after verification
+## The problem
+
+The web has a trust problem.
+
+Most websites still treat every account roughly the same, so high-signal pages get buried under spam, bots, fake engagement, and low-context comments. Proof of human will eventually matter everywhere, but websites will implement it too slowly and too unevenly.
+
+Human Layer’s thesis is that the winning move is to build the verified-human layer above the web first, so the product can:
+- work across sites right now
+- collect the cross-site human graph ahead of the platforms
+- become the trust, identity, and reputation layer before native site adoption catches up
+
+## What Human Layer does
+
+Human Layer adds verified-human context directly on supported pages across the web.
+
+In the current build, people can:
+- verify once and create a pseudonymous one-human profile
+- read and publish page-level takes and verdicts
+- follow people and topics
+- bookmark pages and build a human-graph feed
+- run wallet-signed paid research actions
+- message other verified humans in secure chat
+
+Supported surfaces already include pages like GitHub, YouTube, Spotify, docs, marketplaces, and other high-signal web destinations.
+
+## Hackathon integrations
+
+### World ID
+
+World ID is the human-verification layer.
+
+Human Layer uses World ID to gate write access so one real human can create one pseudonymous Human Layer profile. That lets the product reduce spam and sybil behavior without forcing people to post under a public real-name identity.
+
+In the app, World ID powers:
+- verified profile creation
+- one-human write access
+- human-graph identity bootstrapping
+
+### x402
+
+x402 is the paid action layer.
+
+Human Layer links a user-owned passkey wallet on Base and uses wallet-signed x402 flows for paid actions. Instead of subscriptions or custodial credits, users can approve and pay for valuable actions one request at a time.
+
+In the app, x402 powers:
+- wallet-signed research actions
+- provider commands like StableEnrich / Answer, StableEnrich / Search, and twit.sh search
+- a per-user payment history and spend controls
+
+### XMTP
+
+XMTP is the secure messaging layer.
+
+Once verified humans connect, they can move from public page-level context into secure wallet-based chat. Human Layer stores request and inbox state, while the messaging layer itself stays off the main app database.
+
+In the app, XMTP powers:
+- verified-human message requests
+- wallet-linked inbox binding
+- secure live chat sessions
+
+## Demo video
+
+The hackathon demo video is in:
+
+- [demo-video/human-layer-demo-video.mp4](demo-video/human-layer-demo-video.mp4)
+
+## Repo structure
+
+- apps/web — Next.js web app
+- apps/extension — WXT browser extension
+- packages/core — shared types, URL normalization, demo data, and page-context logic
+- packages/db — Drizzle schema, queries, migrations, and seeding
+- demo-video — hackathon demo video assets
+- documents — product, roadmap, launch, and research notes
 
 ## Quick start
 
-1. `corepack pnpm install`
-2. `corepack pnpm db:up`
-3. `corepack pnpm db:migrate`
-4. `corepack pnpm db:seed`
-5. `corepack pnpm dev:web`
-6. `corepack pnpm dev:extension`
-7. Open `http://127.0.0.1:3000/verify` to create a verified profile in local mock mode
-8. Load the unpacked extension from `apps/extension/.output/chrome-mv3-dev`
+1. corepack pnpm install
+2. corepack pnpm db:up
+3. corepack pnpm db:migrate
+4. corepack pnpm db:seed
+5. corepack pnpm dev:web
+6. corepack pnpm dev:extension
 
-Useful maintenance commands:
-- `corepack pnpm dev:reset` clears the web and extension build output, restarts both dev servers, and waits for the lookup API to come back healthy
-- `corepack pnpm smoke:overlay` builds the extension if needed, opens Chrome with the unpacked extension, and smoke-tests the GitHub overlay plus page/profile navigation
-- `corepack pnpm guardrails:uptime` checks the production or staging verify and lookup surfaces
+Then open http://127.0.0.1:3000/verify.
 
-Deployment and production setup:
-- `FIRST-LAUNCH-CHECKLIST.md`
-- `PRODUCTION-DEPLOYMENT.md`
-- `LAUNCH-GUARDRAILS.md`
-- `PRODUCTION-RELEASE-CHECKLIST.md`
-- `CHROME-WEB-STORE-BETA.md`
-- `INTEGRATION-CONTRIBUTING.md`
-- `PROVIDER-SETUP.md`
-- `apps/web/.env.production.example`
-- `apps/web/.env.staging.example`
-- `apps/extension/.env.production.example`
-- `apps/extension/.env.staging.example`
+## Why this matters
 
-Public contribution paths:
-- request board: `/requested-integrations`
-- GitHub issue intake: `.github/ISSUE_TEMPLATE/integration-request.yml`
-- PR-based integration proposals: `INTEGRATION-CONTRIBUTING.md`
+Human Layer is not waiting for every site to add proof of human.
 
-Operational workflows:
-- `.github/workflows/production-guardrails.yml` runs the production uptime guardrail hourly
-- `.github/workflows/staging-validation.yml` validates any preview URL with uptime and overlay smoke checks
+It builds the verified-human graph across the web first, where:
+- identity is portable
+- trust compounds across sites
+- reputation is earned in public
+- messaging and paid actions are attached to verified humans instead of throwaway accounts
 
-Default local ports:
-- web app: `http://127.0.0.1:3000`
-- extension dev server: `http://127.0.0.1:3001`
-- Postgres: `5433`
-- Redis: `6380`
+That gives Human Layer a path to become the trust layer for the open web before websites implement it natively.
 
-## Start here
+## Future direction
 
-Read these first, in order:
-- 00-START-HERE.md
-- 01-MVP-SCOPE.md
-- 02-FIRST-BUILD.md
-- 03-STACK-DECISIONS.md
-- 04-IMPLEMENTATION-ROADMAP.md
-- 05-ENGINEERING-BACKLOG.md
-- 06-DEMO-STORY.md
-
-## Chosen direction
-
-The locked V1 direction is:
-- browser-extension-first product paired with a lightweight web app
-- first users are builders, researchers, and other high-signal internet users
-- first surfaces are GitHub, Hacker News, Product Hunt, curated docs domains, and selected blogs/Substack
-- first usable build and first demo are GitHub and Hacker News only
-- read-only overlay works without login
-- verified users can post page-level verdicts and flat comments, save pages, follow people, and use access-controlled XMTP messaging
-- World ID uses IDKit first
-- XMTP is a real messaging surface
-- x402 is reserved for paid intro and premium API access
-
-## Identity flow
-
-Phase 1 currently ships:
-- `/verify` for pseudonymous profile creation plus explicit interest onboarding
-- the official `@worldcoin/idkit` widget path for live verification
-- `/api/auth/world-id/request` for signed RP request context
-- `/api/auth/world-id/verify` for nullifier-backed one-human session issuance
-- `/profiles/:handle` for verified-human public profiles
-- extension handoff from verification back into the current page context
-
-Local development defaults to `WORLD_ID_MODE=mock`, which keeps the server contract stable while letting the same mock human key map back to the same nullifier and profile. To turn on the live widget flow, set `WORLD_ID_MODE=remote` and provide `WORLD_ID_RP_ID`, `WORLD_ID_RP_PRIVATE_KEY`, and `WORLD_ID_VERIFY_URL`.
-
-## Supporting research
-
-Product framing and strategy:
-- PRODUCT-THESIS.md
-- STRATEGY.md
-- MVP.md
-- EXTENSION-MVP.md
-- HUMAN-GRAPH-MVP.md
-- ROADMAP.md
-- INFRA.md
-
-World ID, XMTP, and monetization notes:
-- WORLD-ID-X402-XMTP.md
-- WORLD-ID-PRIMITIVES.md
-- XMTP-messaging.md
-- XMTP-x402-ideas.md
-
-Platform and expansion notes:
-- PLATFORMS-AND-DISTRIBUTION.md
-- IOS-MVP.md
-- ELECTROBUN-DESKTOP-MVP.md
-- EXPANSIONS.md
-- VERTICALS-AND-BUSINESS.md
-- WILD-IDEAS.md
-- 8004-8183-expansion.md
-- NAMES.md
-
-## One-line summary
-
-Add a verified-human layer on top of high-signal web pages so people can see page-level judgment, discussion, and trusted humans directly where they already browse.
+Next steps include:
+- importing and mapping trusted people from X, YouTube, Discord, Steam, and other networks
+- expanding the cross-site human graph
+- turning verified-human trust into better discovery, messaging, and paid coordination everywhere online
