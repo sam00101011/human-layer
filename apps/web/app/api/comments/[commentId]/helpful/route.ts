@@ -2,6 +2,7 @@ import { findCommentById, markCommentHelpful } from "@human-layer/db";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getAuthenticatedProfileFromRequest } from "../../../../lib/auth";
+import { assertProfileCanParticipate } from "../../../../lib/safety";
 
 export async function POST(
   request: NextRequest,
@@ -10,6 +11,11 @@ export async function POST(
   const viewer = await getAuthenticatedProfileFromRequest(request);
   if (!viewer) {
     return NextResponse.json({ error: "authentication required" }, { status: 401 });
+  }
+
+  const restriction = await assertProfileCanParticipate(viewer.id);
+  if (restriction) {
+    return NextResponse.json({ error: restriction }, { status: 403 });
   }
 
   const { commentId } = await context.params;

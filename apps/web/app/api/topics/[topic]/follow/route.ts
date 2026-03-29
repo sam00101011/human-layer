@@ -3,6 +3,7 @@ import { followTopicForProfile } from "@human-layer/db";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getAuthenticatedProfileFromRequest } from "../../../../lib/auth";
+import { assertProfileCanParticipate } from "../../../../lib/safety";
 
 function isInterestTag(value: string): value is InterestTag {
   return INTEREST_TAGS.includes(value as InterestTag);
@@ -15,6 +16,11 @@ export async function POST(
   const viewer = await getAuthenticatedProfileFromRequest(request);
   if (!viewer) {
     return NextResponse.json({ error: "authentication required" }, { status: 401 });
+  }
+
+  const restriction = await assertProfileCanParticipate(viewer.id);
+  if (restriction) {
+    return NextResponse.json({ error: restriction }, { status: 403 });
   }
 
   const { topic } = await context.params;

@@ -135,7 +135,8 @@ describe("POST /api/admin/moderation/comments/[commentId]", () => {
         method: "POST",
         body: JSON.stringify({
           action: "hide",
-          reasonCode: "reported_abuse"
+          reasonCode: "spam",
+          note: "clear spam pattern"
         })
       }),
       {
@@ -147,7 +148,8 @@ describe("POST /api/admin/moderation/comments/[commentId]", () => {
       commentId: "comment-1",
       adminProfileId: "admin-1",
       action: "hide",
-      reasonCode: "reported_abuse"
+      reasonCode: "spam",
+      note: "clear spam pattern"
     });
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({

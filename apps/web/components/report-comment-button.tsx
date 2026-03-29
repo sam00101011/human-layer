@@ -1,5 +1,6 @@
 "use client";
 
+import { getCommentReportReasonOptions, type CommentReportReasonCode } from "@human-layer/core";
 import { useState } from "react";
 
 type ReportCommentButtonProps = {
@@ -9,14 +10,14 @@ type ReportCommentButtonProps = {
 
 export function ReportCommentButton({ commentId, compact = false }: ReportCommentButtonProps) {
   const [status, setStatus] = useState<"idle" | "submitting" | "reported">("idle");
+  const [expanded, setExpanded] = useState(false);
+  const [reasonCode, setReasonCode] = useState<CommentReportReasonCode>("spam");
+  const [details, setDetails] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const options = getCommentReportReasonOptions();
 
   async function handleReport() {
     if (status === "submitting" || status === "reported") {
-      return;
-    }
-
-    if (!window.confirm("Report this comment? This action cannot be undone.")) {
       return;
     }
 
@@ -29,7 +30,8 @@ export function ReportCommentButton({ commentId, compact = false }: ReportCommen
         "content-type": "application/json"
       },
       body: JSON.stringify({
-        reasonCode: "needs_review"
+        reasonCode,
+        details: details.trim() || undefined
       })
     }).catch(() => null);
 
@@ -52,20 +54,68 @@ export function ReportCommentButton({ commentId, compact = false }: ReportCommen
     }
 
     setStatus("reported");
+    setExpanded(false);
   }
 
   return (
     <div className="stack compact">
-      <button
-        className={compact ? "inline-action danger" : "button secondary subtle"}
-        disabled={status !== "idle"}
-        onClick={() => {
-          void handleReport();
-        }}
-        type="button"
-      >
-        {status === "reported" ? "Reported" : status === "submitting" ? "Reporting..." : "Report"}
-      </button>
+      <div className="inline-action-row">
+        <button
+          className={compact ? "inline-action danger" : "button secondary subtle"}
+          disabled={status === "submitting" || status === "reported"}
+          onClick={() => {
+            setExpanded((current) => !current);
+          }}
+          type="button"
+        >
+          {status === "reported" ? "Reported" : expanded ? "Cancel report" : "Report"}
+        </button>
+      </div>
+      {expanded && status !== "reported" ? (
+        <div className="stack compact">
+          <label className="stack compact">
+            <span className="muted small-copy">Category</span>
+            <select
+              className="input-field"
+              onChange={(event) => {
+                setReasonCode(event.target.value as CommentReportReasonCode);
+              }}
+              value={reasonCode}
+            >
+              {options.map((option) => (
+                <option key={option.code} value={option.code}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="muted small-copy">
+            {options.find((option) => option.code === reasonCode)?.description}
+          </p>
+          <label className="stack compact">
+            <span className="muted small-copy">Optional note for moderators</span>
+            <textarea
+              className="input-field"
+              onChange={(event) => {
+                setDetails(event.target.value);
+              }}
+              placeholder="Add context if it will help a reviewer."
+              rows={3}
+              value={details}
+            />
+          </label>
+          <button
+            className={compact ? "button secondary subtle" : "button secondary"}
+            disabled={status === "submitting"}
+            onClick={() => {
+              void handleReport();
+            }}
+            type="button"
+          >
+            {status === "submitting" ? "Reporting..." : "Send report"}
+          </button>
+        </div>
+      ) : null}
       {error ? <span className="muted small-copy">{error}</span> : null}
     </div>
   );

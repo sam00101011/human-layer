@@ -1,6 +1,7 @@
 import { PAGE_KINDS, VERDICTS, type InterestTag } from "@human-layer/core";
 import {
   boolean,
+  foreignKey,
   integer,
   jsonb,
   pgEnum,
@@ -33,11 +34,20 @@ export const profiles = pgTable(
     notifyFollowedTopicTakes: boolean("notify_followed_topic_takes")
       .default(true)
       .notNull(),
+    blockedAt: timestamp("blocked_at", { withTimezone: true }),
+    blockedReasonCode: text("blocked_reason_code"),
+    blockedNote: text("blocked_note"),
+    blockedByProfileId: uuid("blocked_by_profile_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
   },
   (table) => ({
     handleUnique: uniqueIndex("profiles_handle_unique").on(table.handle),
-    nullifierHashUnique: uniqueIndex("profiles_nullifier_hash_unique").on(table.nullifierHash)
+    nullifierHashUnique: uniqueIndex("profiles_nullifier_hash_unique").on(table.nullifierHash),
+    blockedByProfileForeignKey: foreignKey({
+      columns: [table.blockedByProfileId],
+      foreignColumns: [table.id],
+      name: "profiles_blocked_by_profile_id_profiles_id_fk"
+    }).onDelete("set null")
   })
 );
 
@@ -302,6 +312,44 @@ export const mutedProfiles = pgTable(
     )
   })
 );
+
+export const blockedProfiles = pgTable(
+  "blocked_profiles",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    profileId: uuid("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    blockedProfileId: uuid("blocked_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    profileBlockedProfileUnique: uniqueIndex("blocked_profiles_profile_blocked_profile_unique").on(
+      table.profileId,
+      table.blockedProfileId
+    )
+  })
+);
+
+export const moderationAuditEvents = pgTable("moderation_audit_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  actorProfileId: uuid("actor_profile_id").references(() => profiles.id, {
+    onDelete: "set null"
+  }),
+  targetProfileId: uuid("target_profile_id").references(() => profiles.id, {
+    onDelete: "set null"
+  }),
+  commentId: uuid("comment_id").references(() => comments.id, {
+    onDelete: "set null"
+  }),
+  actionType: text("action_type").notNull(),
+  reasonCode: text("reason_code"),
+  note: text("note"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+});
 
 export const supportedDomains = pgTable("supported_domains", {
   id: text("id").primaryKey(),

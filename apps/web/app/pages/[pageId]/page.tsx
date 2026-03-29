@@ -4,7 +4,9 @@ import { findPageById, getPageThreadSnapshot } from "@human-layer/db";
 import { notFound } from "next/navigation";
 
 import { HelpfulButton } from "../../../components/helpful-button";
+import { ProfileSafetyActions } from "../../../components/profile-safety-actions";
 import { ReportCommentButton } from "../../../components/report-comment-button";
+import { getAuthenticatedProfileFromCookies } from "../../lib/auth";
 
 function formatPageKind(pageKind: string) {
   return pageKind.replace(/_/g, " ");
@@ -23,13 +25,14 @@ export default async function HumanLayerPage(props: {
   params: Promise<{ pageId: string }>;
 }) {
   const { pageId } = await props.params;
+  const viewer = await getAuthenticatedProfileFromCookies();
   const page = await findPageById(pageId);
 
   if (!page) {
     notFound();
   }
 
-  const thread = await getPageThreadSnapshot(page.id);
+  const thread = await getPageThreadSnapshot(page.id, viewer?.id);
   const pageContext = buildPageContextSummary({ page, thread });
   const verdictTotal = Object.values(thread.verdictCounts).reduce((sum, count) => sum + count, 0);
 
@@ -130,6 +133,11 @@ export default async function HumanLayerPage(props: {
                 initialCount={thread.topHumanTake.helpfulCount}
               />
               <ReportCommentButton commentId={thread.topHumanTake.commentId} compact />
+              <ProfileSafetyActions
+                profileHandle={thread.topHumanTake.profileHandle}
+                profileId={thread.topHumanTake.profileId}
+                viewerProfileId={viewer?.id}
+              />
             </div>
           </article>
         ) : (
@@ -182,6 +190,11 @@ export default async function HumanLayerPage(props: {
               <div className="inline-action-row">
                 <HelpfulButton commentId={comment.commentId} initialCount={comment.helpfulCount} />
                 <ReportCommentButton commentId={comment.commentId} compact />
+                <ProfileSafetyActions
+                  profileHandle={comment.profileHandle}
+                  profileId={comment.profileId}
+                  viewerProfileId={viewer?.id}
+                />
               </div>
             </article>
           ))

@@ -1,5 +1,6 @@
-import { getModerationQueue } from "@human-layer/db";
+import { getModerationAuditHistory, getModerationQueue } from "@human-layer/db";
 
+import { ModerationAuditLog } from "../../components/moderation-audit-log";
 import { ModerationQueue } from "../../components/moderation-queue";
 import { getAuthenticatedProfileFromCookies, isAdminProfile } from "../lib/auth";
 
@@ -32,7 +33,13 @@ export default async function ModerationPage() {
     );
   }
 
-  const items = await getModerationQueue(100);
+  const [items, audit] = await Promise.all([getModerationQueue(100), getModerationAuditHistory(25)]);
+  const repeatOffenderCount = new Set(
+    items.filter((item) => item.repeatOffender).map((item) => item.authorProfileId)
+  ).size;
+  const blockedAuthorCount = new Set(
+    items.filter((item) => item.authorBlockedAt).map((item) => item.authorProfileId)
+  ).size;
 
   return (
     <div className="page-shell stack">
@@ -53,6 +60,14 @@ export default async function ModerationPage() {
               <strong>{items.filter((item) => item.status === "open").length}</strong>
               <span className="muted">Open reports</span>
             </div>
+            <div className="stat-card">
+              <strong>{repeatOffenderCount}</strong>
+              <span className="muted">Repeat-offender risk</span>
+            </div>
+            <div className="stat-card">
+              <strong>{blockedAuthorCount}</strong>
+              <span className="muted">Blocked authors in queue</span>
+            </div>
           </div>
         </div>
       </section>
@@ -63,6 +78,14 @@ export default async function ModerationPage() {
           <span className="muted">Recent reports across Human Layer pages.</span>
         </div>
         <ModerationQueue items={items} />
+      </section>
+
+      <section className="card stack">
+        <div className="section-header">
+          <h2>Audit history</h2>
+          <span className="muted">Recent admin actions, notes, and escalation history.</span>
+        </div>
+        <ModerationAuditLog items={audit} />
       </section>
     </div>
   );

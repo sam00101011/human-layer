@@ -4,7 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   createCommentReport: vi.fn(),
   findCommentById: vi.fn(),
-  getAuthenticatedProfileFromRequest: vi.fn()
+  getAuthenticatedProfileFromRequest: vi.fn(),
+  assertProfileCanParticipate: vi.fn()
 }));
 
 vi.mock("@human-layer/db", () => ({
@@ -16,11 +17,16 @@ vi.mock("../../../../lib/auth", () => ({
   getAuthenticatedProfileFromRequest: mocks.getAuthenticatedProfileFromRequest
 }));
 
+vi.mock("../../../../lib/safety", () => ({
+  assertProfileCanParticipate: mocks.assertProfileCanParticipate
+}));
+
 import { POST } from "./route";
 
 describe("POST /api/comments/[commentId]/report", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.assertProfileCanParticipate.mockResolvedValue(null);
   });
 
   it("rejects anonymous requests", async () => {
@@ -95,7 +101,7 @@ describe("POST /api/comments/[commentId]/report", () => {
       new NextRequest("http://localhost/api/comments/comment-1/report", {
         method: "POST",
         body: JSON.stringify({
-          reasonCode: " abuse ",
+          reasonCode: " scam ",
           details: " hostile tone "
         })
       }),
@@ -107,12 +113,44 @@ describe("POST /api/comments/[commentId]/report", () => {
     expect(mocks.createCommentReport).toHaveBeenCalledWith({
       commentId: "comment-1",
       reporterProfileId: "profile-2",
-      reasonCode: "abuse",
+      reasonCode: "scam",
       details: "hostile tone"
     });
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       ok: true
+    });
+  });
+
+  it("rejects invalid report reasons", async () => {
+    mocks.getAuthenticatedProfileFromRequest.mockResolvedValue({
+      id: "profile-2",
+      handle: "demo_reader"
+    });
+    mocks.findCommentById.mockResolvedValue({
+      id: "comment-1",
+      pageId: "page-1",
+      profileId: "profile-1",
+      body: "Needs review",
+      hidden: false,
+      reasonCode: null
+    });
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/comments/comment-1/report", {
+        method: "POST",
+        body: JSON.stringify({
+          reasonCode: "bogus"
+        })
+      }),
+      {
+        params: Promise.resolve({ commentId: "comment-1" })
+      }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "invalid report reason"
     });
   });
 });

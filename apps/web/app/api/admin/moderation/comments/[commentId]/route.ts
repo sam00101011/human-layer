@@ -23,11 +23,21 @@ export async function POST(
   }
 
   const body = (await request.json().catch(() => null)) as
-    | { action?: "hide" | "dismiss" | "restore"; reasonCode?: string | null }
+    | {
+        action?: "hide" | "dismiss" | "restore" | "block_profile" | "unblock_profile";
+        reasonCode?: string | null;
+        note?: string | null;
+      }
     | null;
   const action = body?.action;
 
-  if (action !== "hide" && action !== "dismiss" && action !== "restore") {
+  if (
+    action !== "hide" &&
+    action !== "dismiss" &&
+    action !== "restore" &&
+    action !== "block_profile" &&
+    action !== "unblock_profile"
+  ) {
     return NextResponse.json({ error: "invalid moderation action" }, { status: 400 });
   }
 
@@ -35,7 +45,8 @@ export async function POST(
     commentId,
     adminProfileId: viewer.id,
     action,
-    reasonCode: body?.reasonCode ?? null
+    reasonCode: body?.reasonCode ?? null,
+    note: body?.note?.trim() ?? null
   });
 
   return NextResponse.json({ ok: true });

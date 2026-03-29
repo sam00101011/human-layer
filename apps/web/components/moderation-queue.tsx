@@ -1,5 +1,6 @@
 "use client";
 
+import { getCommentReportReasonLabel, type CommentReportReasonCode } from "@human-layer/core";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -24,6 +25,11 @@ type ModerationQueueItem = {
   pageTitle: string;
   pageHost: string;
   pageCanonicalUrl: string;
+  authorReportCount: number;
+  authorOpenReportCount: number;
+  authorHiddenCommentCount: number;
+  authorBlockedAt: string | null;
+  repeatOffender: boolean;
 };
 
 type ModerationQueueProps = {
@@ -46,20 +52,30 @@ function formatPageKind(pageKind: string) {
 export function ModerationQueue({ items }: ModerationQueueProps) {
   const router = useRouter();
   const [pendingCommentId, setPendingCommentId] = useState<string | null>(null);
+  const [notesByCommentId, setNotesByCommentId] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
 
-  async function submitAction(commentId: string, action: "hide" | "dismiss" | "restore") {
-    setPendingCommentId(commentId);
+  async function submitAction(
+    item: ModerationQueueItem,
+    action: "hide" | "dismiss" | "restore" | "block_profile" | "unblock_profile"
+  ) {
+    setPendingCommentId(item.commentId);
     setError(null);
 
-    const response = await fetch(`/api/admin/moderation/comments/${commentId}`, {
+    const response = await fetch(`/api/admin/moderation/comments/${item.commentId}`, {
       method: "POST",
       headers: {
         "content-type": "application/json"
       },
       body: JSON.stringify({
         action,
-        reasonCode: action === "hide" ? "reported_abuse" : null
+        reasonCode:
+          action === "hide"
+            ? item.reasonCode
+            : action === "block_profile"
+              ? "repeat_offender"
+              : null,
+        note: notesByCommentId[item.commentId]?.trim() || null
       })
     }).catch(() => null);
 
@@ -85,6 +101,7 @@ export function ModerationQueue({ items }: ModerationQueueProps) {
       {error ? <p className="error-message">{error}</p> : null}
       {items.map((item) => {
         const pending = pendingCommentId === item.commentId;
+        const noteValue = notesByCommentId[item.commentId] ?? "";
 
         return (
           <article className="stack comment-card" key={item.reportId}>
@@ -103,15 +120,40 @@ export function ModerationQueue({ items }: ModerationQueueProps) {
             <div className="stack compact">
               <p className="muted">
                 Reported by @{item.reporterHandle} on {formatDate(item.createdAt)} for{" "}
-                <span className="mono">{item.reasonCode}</span>
+                <span className="mono">
+                  {getCommentReportReasonLabel(item.reasonCode as CommentReportReasonCode)}
+                </span>
               </p>
               <p className="muted">
                 Comment by @{item.authorHandle} on {formatDate(item.commentCreatedAt)}
               </p>
+              <p className="muted">
+                Author reports {item.authorReportCount} • open {item.authorOpenReportCount} • hidden{" "}
+                {item.authorHiddenCommentCount}
+              </p>
             </div>
 
+            <div className="chip-row">
+              {item.repeatOffender ? <span className="pill pill-danger">Repeat offender risk</span> : null}
+              {item.authorBlockedAt ? <span className="pill">Author blocked</span> : null}
+            </div>
             <p>{item.commentBody}</p>
             {item.details ? <p className="muted">Reporter note: {item.details}</p> : null}
+            <label className="stack compact">
+              <span className="muted small-copy">Admin note</span>
+              <textarea
+                className="input-field"
+                onChange={(event) => {
+                  setNotesByCommentId((current) => ({
+                    ...current,
+                    [item.commentId]: event.target.value
+                  }));
+                }}
+                placeholder="Leave context for the moderation log."
+                rows={3}
+                value={noteValue}
+              />
+            </label>
 
             <div className="link-row">
               <a className="inline-link" href={item.pageCanonicalUrl} rel="noreferrer" target="_blank">
@@ -127,7 +169,7 @@ export function ModerationQueue({ items }: ModerationQueueProps) {
                 className="button"
                 disabled={pending}
                 onClick={() => {
-                  void submitAction(item.commentId, item.commentHidden ? "restore" : "hide");
+                  void submitAction(item, item.commentHidden ? "restore" : "hide");
                 }}
                 type="button"
               >
@@ -137,11 +179,21 @@ export function ModerationQueue({ items }: ModerationQueueProps) {
                 className="button secondary subtle"
                 disabled={pending}
                 onClick={() => {
-                  void submitAction(item.commentId, "dismiss");
+                  void submitAction(item, "dismiss");
                 }}
                 type="button"
               >
                 Dismiss report
+              </button>
+              <button
+                className="button secondary subtle"
+                disabled={pending}
+                onClick={() => {
+                  void submitAction(item, item.authorBlockedAt ? "unblock_profile" : "block_profile");
+                }}
+                type="button"
+              >
+                {item.authorBlockedAt ? `Unblock @${item.authorHandle}` : `Block @${item.authorHandle}`}
               </button>
             </div>
           </article>

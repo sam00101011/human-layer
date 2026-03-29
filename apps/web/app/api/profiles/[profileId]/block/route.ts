@@ -1,8 +1,7 @@
-import { followProfile, getProfileById } from "@human-layer/db";
+import { blockProfileForProfile, getProfileById } from "@human-layer/db";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getAuthenticatedProfileFromRequest } from "../../../../lib/auth";
-import { assertProfileCanParticipate } from "../../../../lib/safety";
 
 export async function POST(
   request: NextRequest,
@@ -13,14 +12,9 @@ export async function POST(
     return NextResponse.json({ error: "authentication required" }, { status: 401 });
   }
 
-  const restriction = await assertProfileCanParticipate(viewer.id);
-  if (restriction) {
-    return NextResponse.json({ error: restriction }, { status: 403 });
-  }
-
   const { profileId } = await context.params;
   if (profileId === viewer.id) {
-    return NextResponse.json({ error: "cannot follow yourself" }, { status: 400 });
+    return NextResponse.json({ error: "cannot block yourself" }, { status: 400 });
   }
 
   const targetProfile = await getProfileById(profileId);
@@ -28,9 +22,9 @@ export async function POST(
     return NextResponse.json({ error: "profile not found" }, { status: 404 });
   }
 
-  await followProfile({
-    followerProfileId: viewer.id,
-    followeeProfileId: profileId
+  await blockProfileForProfile({
+    profileId: viewer.id,
+    blockedProfileId: profileId
   });
 
   return NextResponse.json({ ok: true });

@@ -8,6 +8,7 @@ import {
   MAX_PROFILE_INTERESTS,
   SUPPORTED_DOMAIN_RULES,
   summarizeContributorReputation,
+  type CommentReportReasonCode,
   type ContributorReputation,
   type ContributorReputationMetrics,
   type InterestTag,
@@ -25,10 +26,12 @@ import { createHash, randomBytes } from "node:crypto";
 
 import { db } from "./client";
 import {
+  blockedProfiles,
   commentHelpfulVotes,
   commentReports,
   comments,
   follows,
+  moderationAuditEvents,
   mutedPages,
   mutedProfiles,
   notificationReads,
@@ -127,6 +130,25 @@ export type ModerationQueueItem = {
   pageTitle: string;
   pageHost: string;
   pageCanonicalUrl: string;
+  authorReportCount: number;
+  authorOpenReportCount: number;
+  authorHiddenCommentCount: number;
+  authorBlockedAt: string | null;
+  repeatOffender: boolean;
+};
+
+export type ModerationAuditItem = {
+  id: string;
+  actionType: string;
+  reasonCode: string | null;
+  note: string | null;
+  actorProfileId: string | null;
+  actorHandle: string | null;
+  targetProfileId: string | null;
+  targetHandle: string | null;
+  commentId: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
 };
 
 export type DiscoveryPage = PageSummary & {
@@ -566,7 +588,7 @@ async function getProfileDiscoveryRows(
   followerCountMap: Map<string, number>;
   reputationMap: Map<string, ContributorReputation>;
 }> {
-  const [profileRows, commentRows, followerRows] = await Promise.all([
+  const [profileRows, commentRows, followerRows, blockedRows] = await Promise.all([
     db
       .select({
         id: profiles.id,
@@ -590,14 +612,25 @@ async function getProfileDiscoveryRows(
         count: sql<number>`count(*)::int`
       })
       .from(follows)
-      .groupBy(follows.followeeProfileId)
+      .groupBy(follows.followeeProfileId),
+    viewerProfileId
+      ? db
+          .select({
+            blockedProfileId: blockedProfiles.blockedProfileId
+          })
+          .from(blockedProfiles)
+          .where(eq(blockedProfiles.profileId, viewerProfileId))
+      : Promise.resolve([])
   ]);
 
+  const blockedProfileIds = new Set(blockedRows.map((row) => row.blockedProfileId));
+  const visibleProfileRows = profileRows.filter((row) => !blockedProfileIds.has(row.id));
+
   return {
-    profileRows,
+    profileRows: visibleProfileRows,
     commentCountMap: new Map(commentRows.map((row) => [row.profileId, row.count])),
     followerCountMap: new Map(followerRows.map((row) => [row.profileId, row.count])),
-    reputationMap: await getContributorReputationMap(profileRows.map((row) => row.id))
+    reputationMap: await getContributorReputationMap(visibleProfileRows.map((row) => row.id))
   };
 }
 
@@ -631,6 +664,18 @@ function buildNotificationReason(sources: NotificationSource[]): string {
   }
 
   return "A bookmarked page has new activity.";
+}
+
+function isRepeatOffender(stats: {
+  authorReportCount: number;
+  authorOpenReportCount: number;
+  authorHiddenCommentCount: number;
+}) {
+  return (
+    stats.authorHiddenCommentCount >= 2 ||
+    stats.authorOpenReportCount >= 2 ||
+    stats.authorReportCount >= 4
+  );
 }
 
 function getReputationWeight(level: ContributorReputation["level"] | undefined): number {
@@ -847,7 +892,10 @@ export async function upsertPageFromCandidate(
   };
 }
 
-export async function getPageThreadSnapshot(pageId: string): Promise<ThreadSnapshot> {
+export async function getPageThreadSnapshot(
+  pageId: string,
+  viewerProfileId?: string
+): Promise<ThreadSnapshot> {
   const verdictRows = await db
     .select({
       verdict: verdicts.verdict,
@@ -862,19 +910,54 @@ export async function getPageThreadSnapshot(pageId: string): Promise<ThreadSnaps
     verdictCounts[row.verdict as Verdict] = row.count;
   }
 
-  const recentComments = await db
-    .select({
-      commentId: comments.id,
-      profileId: profiles.id,
-      profileHandle: profiles.handle,
-      body: comments.body,
-      createdAt: comments.createdAt
-    })
-    .from(comments)
-    .innerJoin(profiles, eq(profiles.id, comments.profileId))
-    .where(and(eq(comments.pageId, pageId), eq(comments.hidden, false)))
-    .orderBy(desc(comments.createdAt))
-    .limit(10);
+  const recentComments = viewerProfileId
+    ? await db
+        .select({
+          commentId: comments.id,
+          profileId: profiles.id,
+          profileHandle: profiles.handle,
+          body: comments.body,
+          createdAt: comments.createdAt
+        })
+        .from(comments)
+        .innerJoin(profiles, eq(profiles.id, comments.profileId))
+        .leftJoin(
+          mutedProfiles,
+          and(
+            eq(mutedProfiles.mutedProfileId, comments.profileId),
+            eq(mutedProfiles.profileId, viewerProfileId)
+          )
+        )
+        .leftJoin(
+          blockedProfiles,
+          and(
+            eq(blockedProfiles.blockedProfileId, comments.profileId),
+            eq(blockedProfiles.profileId, viewerProfileId)
+          )
+        )
+        .where(
+          and(
+            eq(comments.pageId, pageId),
+            eq(comments.hidden, false),
+            sql`${mutedProfiles.id} is null`,
+            sql`${blockedProfiles.id} is null`
+          )
+        )
+        .orderBy(desc(comments.createdAt))
+        .limit(10)
+    : await db
+        .select({
+          commentId: comments.id,
+          profileId: profiles.id,
+          profileHandle: profiles.handle,
+          body: comments.body,
+          createdAt: comments.createdAt
+        })
+        .from(comments)
+        .innerJoin(profiles, eq(profiles.id, comments.profileId))
+        .where(and(eq(comments.pageId, pageId), eq(comments.hidden, false)))
+        .orderBy(desc(comments.createdAt))
+        .limit(10);
 
   const commentIds = recentComments.map((comment) => comment.commentId);
 
@@ -1310,12 +1393,20 @@ export async function getTopicFeedFromFollowedProfiles(
       mutedProfiles,
       and(eq(mutedProfiles.mutedProfileId, comments.profileId), eq(mutedProfiles.profileId, profileId))
     )
+    .leftJoin(
+      blockedProfiles,
+      and(
+        eq(blockedProfiles.blockedProfileId, comments.profileId),
+        eq(blockedProfiles.profileId, profileId)
+      )
+    )
     .where(
       and(
         eq(comments.hidden, false),
         ne(comments.profileId, profileId),
         sql`${mutedPages.id} is null`,
-        sql`${mutedProfiles.id} is null`
+        sql`${mutedProfiles.id} is null`,
+        sql`${blockedProfiles.id} is null`
       )
     )
     .groupBy(
@@ -1445,7 +1536,7 @@ export async function getPagesBookmarkedByFollowedProfiles(
   profileId: string,
   limit = 6
 ): Promise<FollowRecommendedPage[]> {
-  const [rows, mutedRows] = await Promise.all([
+  const [rows, mutedRows, blockedRows] = await Promise.all([
     db
       .select({
         pageId: saves.pageId,
@@ -1463,14 +1554,22 @@ export async function getPagesBookmarkedByFollowedProfiles(
         pageId: mutedPages.pageId
       })
       .from(mutedPages)
-      .where(eq(mutedPages.profileId, profileId))
+      .where(eq(mutedPages.profileId, profileId)),
+    db
+      .select({
+        blockedProfileId: blockedProfiles.blockedProfileId
+      })
+      .from(blockedProfiles)
+      .where(eq(blockedProfiles.profileId, profileId))
   ]);
 
   const mutedPageIds = new Set(mutedRows.map((row) => row.pageId));
+  const blockedProfileIds = new Set(blockedRows.map((row) => row.blockedProfileId));
   const pageSignals = new Map<string, { count: number; handles: string[] }>();
 
   for (const row of rows) {
     if (mutedPageIds.has(row.pageId)) continue;
+    if (blockedProfileIds.has(row.profileId)) continue;
     const current = pageSignals.get(row.pageId) ?? { count: 0, handles: [] };
     current.count += 1;
     if (!current.handles.includes(row.handle)) {
@@ -1650,6 +1749,8 @@ export async function getSessionProfileByRawToken(rawToken: string): Promise<{
 export async function getProfileById(profileId: string): Promise<{
   id: string;
   handle: string;
+  blockedAt: string | null;
+  blockedReasonCode: string | null;
 } | null> {
   const row = await db.query.profiles.findFirst({
     where: eq(profiles.id, profileId)
@@ -1659,8 +1760,37 @@ export async function getProfileById(profileId: string): Promise<{
 
   return {
     id: row.id,
-    handle: row.handle
+    handle: row.handle,
+    blockedAt: row.blockedAt ? row.blockedAt.toISOString() : null,
+    blockedReasonCode: row.blockedReasonCode ?? null
   };
+}
+
+export async function blockProfileForProfile(params: {
+  profileId: string;
+  blockedProfileId: string;
+}): Promise<void> {
+  await db
+    .insert(blockedProfiles)
+    .values({
+      profileId: params.profileId,
+      blockedProfileId: params.blockedProfileId
+    })
+    .onConflictDoNothing();
+}
+
+export async function isProfileBlockedForProfile(params: {
+  profileId: string;
+  blockedProfileId: string;
+}): Promise<boolean> {
+  const row = await db.query.blockedProfiles.findFirst({
+    where: and(
+      eq(blockedProfiles.profileId, params.profileId),
+      eq(blockedProfiles.blockedProfileId, params.blockedProfileId)
+    )
+  });
+
+  return Boolean(row);
 }
 
 export async function getStoredProfileByHandle(handle: string): Promise<StoredProfile | null> {
@@ -2108,12 +2238,20 @@ export async function getNotificationsForProfile(
       mutedProfiles,
       and(eq(mutedProfiles.mutedProfileId, comments.profileId), eq(mutedProfiles.profileId, profileId))
     )
+    .leftJoin(
+      blockedProfiles,
+      and(
+        eq(blockedProfiles.blockedProfileId, comments.profileId),
+        eq(blockedProfiles.profileId, profileId)
+      )
+    )
     .where(
       and(
         eq(comments.hidden, false),
         ne(comments.profileId, profileId),
         sql`${mutedPages.id} is null`,
-        sql`${mutedProfiles.id} is null`
+        sql`${mutedProfiles.id} is null`,
+        sql`${blockedProfiles.id} is null`
       )
     )
     .groupBy(
@@ -2227,12 +2365,20 @@ export async function getFollowedProfileActivity(
       mutedProfiles,
       and(eq(mutedProfiles.mutedProfileId, comments.profileId), eq(mutedProfiles.profileId, profileId))
     )
+    .leftJoin(
+      blockedProfiles,
+      and(
+        eq(blockedProfiles.blockedProfileId, comments.profileId),
+        eq(blockedProfiles.profileId, profileId)
+      )
+    )
     .where(
       and(
         eq(comments.hidden, false),
         ne(comments.profileId, profileId),
         sql`${mutedPages.id} is null`,
-        sql`${mutedProfiles.id} is null`
+        sql`${mutedProfiles.id} is null`,
+        sql`${blockedProfiles.id} is null`
       )
     )
     .groupBy(
@@ -2619,7 +2765,7 @@ export async function muteProfileForProfile(params: {
 export async function createCommentReport(params: {
   commentId: string;
   reporterProfileId: string;
-  reasonCode: string;
+  reasonCode: CommentReportReasonCode | string;
   details?: string | null;
 }): Promise<void> {
   await db
@@ -2643,6 +2789,59 @@ export async function createCommentReport(params: {
         reviewedByProfileId: null
       }
     });
+}
+
+export async function getModerationAuditHistory(limit = 50): Promise<ModerationAuditItem[]> {
+  const rows = await db
+    .select({
+      id: moderationAuditEvents.id,
+      actionType: moderationAuditEvents.actionType,
+      reasonCode: moderationAuditEvents.reasonCode,
+      note: moderationAuditEvents.note,
+      actorProfileId: moderationAuditEvents.actorProfileId,
+      targetProfileId: moderationAuditEvents.targetProfileId,
+      commentId: moderationAuditEvents.commentId,
+      metadata: moderationAuditEvents.metadata,
+      createdAt: moderationAuditEvents.createdAt
+    })
+    .from(moderationAuditEvents)
+    .orderBy(desc(moderationAuditEvents.createdAt))
+    .limit(limit);
+
+  const profileIds = [
+    ...new Set(
+      rows
+        .flatMap((row) => [row.actorProfileId, row.targetProfileId])
+        .filter((value): value is string => Boolean(value))
+    )
+  ];
+
+  const profileRows =
+    profileIds.length === 0
+      ? []
+      : await db
+          .select({
+            id: profiles.id,
+            handle: profiles.handle
+          })
+          .from(profiles)
+          .where(inArray(profiles.id, profileIds));
+
+  const handleMap = new Map(profileRows.map((row) => [row.id, row.handle]));
+
+  return rows.map((row) => ({
+    id: row.id,
+    actionType: row.actionType,
+    reasonCode: row.reasonCode,
+    note: row.note,
+    actorProfileId: row.actorProfileId,
+    actorHandle: row.actorProfileId ? handleMap.get(row.actorProfileId) ?? null : null,
+    targetProfileId: row.targetProfileId,
+    targetHandle: row.targetProfileId ? handleMap.get(row.targetProfileId) ?? null : null,
+    commentId: row.commentId,
+    metadata: row.metadata,
+    createdAt: row.createdAt.toISOString()
+  }));
 }
 
 export async function getModerationQueue(limit = 100): Promise<ModerationQueueItem[]> {
@@ -2676,6 +2875,7 @@ export async function getModerationQueue(limit = 100): Promise<ModerationQueueIt
     .limit(limit);
 
   const reporterIds = [...new Set(rows.map((row) => row.reporterProfileId))];
+  const authorIds = [...new Set(rows.map((row) => row.authorProfileId))];
   const reporterRows =
     reporterIds.length === 0
       ? []
@@ -2687,9 +2887,75 @@ export async function getModerationQueue(limit = 100): Promise<ModerationQueueIt
           .from(profiles)
           .where(inArray(profiles.id, reporterIds));
 
+  const [authorReportRows, hiddenCountRows, blockedRows] = await Promise.all([
+    authorIds.length === 0
+      ? Promise.resolve([])
+      : db
+          .select({
+            profileId: comments.profileId,
+            reportCount: sql<number>`count(${commentReports.id})::int`,
+            openReportCount: sql<number>`count(case when ${commentReports.status} = 'open' then 1 end)::int`
+          })
+          .from(comments)
+          .leftJoin(commentReports, eq(commentReports.commentId, comments.id))
+          .where(inArray(comments.profileId, authorIds))
+          .groupBy(comments.profileId),
+    authorIds.length === 0
+      ? Promise.resolve([])
+      : db
+          .select({
+            profileId: comments.profileId,
+            hiddenCommentCount: sql<number>`count(*)::int`
+          })
+          .from(comments)
+          .where(and(inArray(comments.profileId, authorIds), eq(comments.hidden, true)))
+          .groupBy(comments.profileId),
+    authorIds.length === 0
+      ? Promise.resolve([])
+      : db
+          .select({
+            id: profiles.id,
+            blockedAt: profiles.blockedAt
+          })
+          .from(profiles)
+          .where(inArray(profiles.id, authorIds))
+  ]);
+
   const reporterHandleMap = new Map(reporterRows.map((row) => [row.id, row.handle]));
+  const authorReportMap = new Map(
+    authorReportRows.map((row) => [
+      row.profileId,
+      {
+        reportCount: row.reportCount,
+        openReportCount: row.openReportCount
+      }
+    ])
+  );
+  const hiddenCountMap = new Map(hiddenCountRows.map((row) => [row.profileId, row.hiddenCommentCount]));
+  const blockedAtMap = new Map(
+    blockedRows.map((row) => [row.id, row.blockedAt ? row.blockedAt.toISOString() : null])
+  );
 
   return rows.map((row) => ({
+    ...(function buildAuthorStats() {
+      const reportStats = authorReportMap.get(row.authorProfileId) ?? {
+        reportCount: 0,
+        openReportCount: 0
+      };
+      const authorHiddenCommentCount = hiddenCountMap.get(row.authorProfileId) ?? 0;
+      const authorBlockedAt = blockedAtMap.get(row.authorProfileId) ?? null;
+      return {
+        authorReportCount: reportStats.reportCount,
+        authorOpenReportCount: reportStats.openReportCount,
+        authorHiddenCommentCount,
+        authorBlockedAt,
+        repeatOffender: isRepeatOffender({
+          authorReportCount: reportStats.reportCount,
+          authorOpenReportCount: reportStats.openReportCount,
+          authorHiddenCommentCount
+        })
+      };
+    })(),
     reportId: row.reportId,
     status: row.status,
     reasonCode: row.reasonCode,
@@ -2716,10 +2982,26 @@ export async function getModerationQueue(limit = 100): Promise<ModerationQueueIt
 export async function reviewCommentReports(params: {
   commentId: string;
   adminProfileId: string;
-  action: "hide" | "dismiss" | "restore";
+  action: "hide" | "dismiss" | "restore" | "block_profile" | "unblock_profile";
   reasonCode?: string | null;
+  note?: string | null;
 }): Promise<void> {
   await db.transaction(async (tx) => {
+    const [commentRow] = await tx
+      .select({
+        commentId: comments.id,
+        authorProfileId: comments.profileId
+      })
+      .from(comments)
+      .where(eq(comments.id, params.commentId))
+      .limit(1);
+
+    if (!commentRow) {
+      return;
+    }
+
+    const reviewedAt = new Date();
+
     if (params.action === "hide") {
       await tx
         .update(comments)
@@ -2740,15 +3022,118 @@ export async function reviewCommentReports(params: {
         .where(eq(comments.id, params.commentId));
     }
 
-    await tx
-      .update(commentReports)
-      .set({
-        status: params.action === "hide" ? "hidden" : params.action === "restore" ? "restored" : "dismissed",
-        reviewedAt: new Date(),
-        reviewedByProfileId: params.adminProfileId
-      })
-      .where(eq(commentReports.commentId, params.commentId));
+    if (params.action === "block_profile") {
+      await tx
+        .update(profiles)
+        .set({
+          blockedAt: reviewedAt,
+          blockedReasonCode: params.reasonCode ?? "repeat_offender",
+          blockedNote: params.note ?? null,
+          blockedByProfileId: params.adminProfileId
+        })
+        .where(eq(profiles.id, commentRow.authorProfileId));
+
+      await tx
+        .update(comments)
+        .set({
+          hidden: true,
+          reasonCode: params.reasonCode ?? "blocked_profile"
+        })
+        .where(eq(comments.profileId, commentRow.authorProfileId));
+    }
+
+    if (params.action === "unblock_profile") {
+      await tx
+        .update(profiles)
+        .set({
+          blockedAt: null,
+          blockedReasonCode: null,
+          blockedNote: null,
+          blockedByProfileId: null
+        })
+        .where(eq(profiles.id, commentRow.authorProfileId));
+    }
+
+    if (params.action === "block_profile") {
+      const authorCommentRows = await tx
+        .select({
+          id: comments.id
+        })
+        .from(comments)
+        .where(eq(comments.profileId, commentRow.authorProfileId));
+
+      const authorCommentIds = authorCommentRows.map((row) => row.id);
+      if (authorCommentIds.length > 0) {
+        await tx
+          .update(commentReports)
+          .set({
+            status: "blocked_profile",
+            reviewedAt,
+            reviewedByProfileId: params.adminProfileId
+          })
+          .where(
+            and(
+              inArray(commentReports.commentId, authorCommentIds),
+              eq(commentReports.status, "open")
+            )
+          );
+      }
+    } else {
+      await tx
+        .update(commentReports)
+        .set({
+          status:
+            params.action === "hide"
+              ? "hidden"
+              : params.action === "restore"
+                ? "restored"
+                : params.action === "unblock_profile"
+                  ? "dismissed"
+                  : "dismissed",
+          reviewedAt,
+          reviewedByProfileId: params.adminProfileId
+        })
+        .where(eq(commentReports.commentId, params.commentId));
+    }
+
+    await tx.insert(moderationAuditEvents).values({
+      actorProfileId: params.adminProfileId,
+      targetProfileId: commentRow.authorProfileId,
+      commentId: params.commentId,
+      actionType: params.action,
+      reasonCode: params.reasonCode ?? null,
+      note: params.note ?? null,
+      metadata:
+        params.action === "block_profile"
+          ? {
+              affectedProfileId: commentRow.authorProfileId,
+              escalatedFromCommentId: params.commentId
+            }
+          : {
+              reviewedCommentId: params.commentId
+            }
+    });
   });
+}
+
+export async function getProfileModerationState(profileId: string): Promise<{
+  blocked: boolean;
+  blockedAt: string | null;
+  blockedReasonCode: string | null;
+}> {
+  const row = await db.query.profiles.findFirst({
+    where: eq(profiles.id, profileId),
+    columns: {
+      blockedAt: true,
+      blockedReasonCode: true
+    }
+  });
+
+  return {
+    blocked: Boolean(row?.blockedAt),
+    blockedAt: row?.blockedAt ? row.blockedAt.toISOString() : null,
+    blockedReasonCode: row?.blockedReasonCode ?? null
+  };
 }
 
 export async function followProfile(params: {

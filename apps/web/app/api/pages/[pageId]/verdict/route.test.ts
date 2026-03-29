@@ -5,7 +5,8 @@ const mocks = vi.hoisted(() => ({
   findPageById: vi.fn(),
   getPageThreadSnapshot: vi.fn(),
   upsertVerdictForPage: vi.fn(),
-  getAuthenticatedProfileFromRequest: vi.fn()
+  getAuthenticatedProfileFromRequest: vi.fn(),
+  assertProfileCanParticipate: vi.fn()
 }));
 
 vi.mock("@human-layer/db", () => ({
@@ -18,11 +19,16 @@ vi.mock("../../../../lib/auth", () => ({
   getAuthenticatedProfileFromRequest: mocks.getAuthenticatedProfileFromRequest
 }));
 
+vi.mock("../../../../lib/safety", () => ({
+  assertProfileCanParticipate: mocks.assertProfileCanParticipate
+}));
+
 import { POST } from "./route";
 
 describe("POST /api/pages/[pageId]/verdict", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.assertProfileCanParticipate.mockResolvedValue(null);
   });
 
   it("rejects anonymous requests", async () => {
@@ -101,6 +107,7 @@ describe("POST /api/pages/[pageId]/verdict", () => {
       profileId: "profile-1",
       verdict: "misleading"
     });
+    expect(mocks.getPageThreadSnapshot).toHaveBeenCalledWith("page-1", "profile-1");
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       ok: true,

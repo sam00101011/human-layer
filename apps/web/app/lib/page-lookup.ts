@@ -16,7 +16,7 @@ import {
 export type PageLookupStore = {
   findPageByCanonicalKey(canonicalKey: string): Promise<StoredPage | null>;
   upsertPage(candidate: NormalizedPageCandidate, rawUrl: string): Promise<StoredPage>;
-  getThreadSnapshot(pageId: string): Promise<ThreadSnapshot>;
+  getThreadSnapshot(pageId: string, viewerProfileId?: string): Promise<ThreadSnapshot>;
 };
 
 export const dbPageLookupStore: PageLookupStore = {
@@ -51,7 +51,8 @@ function emptyThread(): ThreadSnapshot {
 
 export async function lookupPageByUrl(
   rawUrl: string,
-  store: PageLookupStore = dbPageLookupStore
+  store: PageLookupStore = dbPageLookupStore,
+  viewerProfileId?: string
 ): Promise<PageLookupResponse> {
   const candidate = normalizeUrl(rawUrl);
   if (!candidate || !isPhase0EnabledPageKind(candidate.pageKind)) {
@@ -66,7 +67,7 @@ export async function lookupPageByUrl(
     return emptyResponse();
   }
 
-  const thread = await store.getThreadSnapshot(page.id).catch(() => emptyThread());
+  const thread = await store.getThreadSnapshot(page.id, viewerProfileId).catch(() => emptyThread());
 
   return {
     supported: true,

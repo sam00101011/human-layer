@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   followTopicForProfile: vi.fn(),
-  getAuthenticatedProfileFromRequest: vi.fn()
+  getAuthenticatedProfileFromRequest: vi.fn(),
+  assertProfileCanParticipate: vi.fn()
 }));
 
 vi.mock("@human-layer/db", () => ({
@@ -14,11 +15,16 @@ vi.mock("../../../../lib/auth", () => ({
   getAuthenticatedProfileFromRequest: mocks.getAuthenticatedProfileFromRequest
 }));
 
+vi.mock("../../../../lib/safety", () => ({
+  assertProfileCanParticipate: mocks.assertProfileCanParticipate
+}));
+
 import { POST } from "./route";
 
 describe("POST /api/topics/[topic]/follow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.assertProfileCanParticipate.mockResolvedValue(null);
   });
 
   it("rejects anonymous requests", async () => {

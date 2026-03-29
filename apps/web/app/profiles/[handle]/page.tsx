@@ -4,7 +4,9 @@ import { getInterestTagLabel } from "@human-layer/core";
 import { notFound } from "next/navigation";
 
 import { HelpfulButton } from "../../../components/helpful-button";
+import { ProfileSafetyActions } from "../../../components/profile-safety-actions";
 import { ReportCommentButton } from "../../../components/report-comment-button";
+import { getAuthenticatedProfileFromCookies } from "../../lib/auth";
 
 function formatPageKind(pageKind: string) {
   return pageKind.replace(/_/g, " ");
@@ -58,6 +60,7 @@ export default async function ProfilePage(props: {
   params: Promise<{ handle: string }>;
 }) {
   const { handle } = await props.params;
+  const viewer = await getAuthenticatedProfileFromCookies();
   const profile = await getProfileSnapshotByHandle(handle);
 
   if (!profile) {
@@ -227,6 +230,11 @@ export default async function ProfilePage(props: {
               <div className="inline-action-row">
                 <HelpfulButton commentId={comment.commentId} initialCount={comment.helpfulCount} />
                 <ReportCommentButton commentId={comment.commentId} compact />
+                <ProfileSafetyActions
+                  profileHandle={comment.profileHandle}
+                  profileId={comment.profileId}
+                  viewerProfileId={viewer?.id}
+                />
               </div>
               <div className="link-row">
                 <Link className="inline-link" href={`/pages/${comment.pageId}`}>

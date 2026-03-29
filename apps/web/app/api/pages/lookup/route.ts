@@ -26,8 +26,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const lookup = await lookupPageByUrl(rawUrl);
     const viewer = await getAuthenticatedProfileFromRequest(request);
+    const lookup = await lookupPageByUrl(rawUrl, undefined, viewer?.id);
 
     return NextResponse.json({
       ...lookup,

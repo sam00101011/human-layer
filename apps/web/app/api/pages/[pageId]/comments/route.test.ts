@@ -5,7 +5,8 @@ const mocks = vi.hoisted(() => ({
   createCommentForPage: vi.fn(),
   findPageById: vi.fn(),
   getPageThreadSnapshot: vi.fn(),
-  getAuthenticatedProfileFromRequest: vi.fn()
+  getAuthenticatedProfileFromRequest: vi.fn(),
+  assertProfileCanParticipate: vi.fn()
 }));
 
 vi.mock("@human-layer/db", () => ({
@@ -18,11 +19,16 @@ vi.mock("../../../../lib/auth", () => ({
   getAuthenticatedProfileFromRequest: mocks.getAuthenticatedProfileFromRequest
 }));
 
+vi.mock("../../../../lib/safety", () => ({
+  assertProfileCanParticipate: mocks.assertProfileCanParticipate
+}));
+
 import { POST } from "./route";
 
 describe("POST /api/pages/[pageId]/comments", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.assertProfileCanParticipate.mockResolvedValue(null);
   });
 
   it("rejects anonymous requests", async () => {
@@ -117,6 +123,7 @@ describe("POST /api/pages/[pageId]/comments", () => {
       profileId: "profile-1",
       body: "Phase 0 verified path."
     });
+    expect(mocks.getPageThreadSnapshot).toHaveBeenCalledWith("page-1", "profile-1");
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       ok: true,
@@ -146,6 +153,23 @@ describe("POST /api/pages/[pageId]/comments", () => {
           }
         ]
       }
+    });
+  });
+
+  it("rejects blocked viewers", async () => {
+    mocks.getAuthenticatedProfileFromRequest.mockResolvedValue({
+      id: "profile-1",
+      handle: "demo_builder"
+    });
+    mocks.assertProfileCanParticipate.mockResolvedValue("account restricted");
+
+    const response = await POST(new NextRequest("http://localhost/api/pages/page-1/comments"), {
+      params: Promise.resolve({ pageId: "page-1" })
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "account restricted"
     });
   });
 });
