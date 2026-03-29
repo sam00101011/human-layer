@@ -30,16 +30,17 @@ export async function POST(request: NextRequest) {
         amountUsdCents?: number;
         paymentRail?: string;
         paymentResponseHeader?: string | null;
+        description?: string | null;
+        metadata?: Record<string, unknown> | null;
         result?: WalletResearchResult | null;
       }
     | null;
-
-  if (!body?.pageId) {
-    return NextResponse.json({ error: "pageId is required" }, { status: 400 });
+  if (!body) {
+    return NextResponse.json({ error: "invalid request body" }, { status: 400 });
   }
 
-  const page = await findPageById(body.pageId);
-  if (!page) {
+  const page = body?.pageId ? await findPageById(body.pageId) : null;
+  if (body?.pageId && !page) {
     return NextResponse.json({ error: "page not found" }, { status: 404 });
   }
 
@@ -84,17 +85,18 @@ export async function POST(request: NextRequest) {
 
   const payment = await recordWalletResearchPayment({
     profileId: viewer.id,
-    pageId: page.id,
+    pageId: page?.id ?? null,
     provider: provider.id,
     amountUsdCents,
-    description: provider.label + ": " + page.title,
+    description: body.description ?? (page ? provider.label + ": " + page.title : provider.label),
     status: body.result.mode,
     metadata: {
       query: body.result.query,
-      pageHost: page.host,
-      pageKind: page.pageKind,
+      pageHost: page?.host ?? null,
+      pageKind: page?.pageKind ?? null,
       paymentRail: body.paymentRail ?? (amountUsdCents > 0 ? "wallet_signed_x402" : "preview"),
-      paymentResponseHeader: body.paymentResponseHeader ?? null
+      paymentResponseHeader: body.paymentResponseHeader ?? null,
+      ...(body.metadata ?? {})
     }
   });
 

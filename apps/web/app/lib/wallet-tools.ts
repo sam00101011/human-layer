@@ -36,8 +36,50 @@ export type WalletResearchExecution = {
   paymentResponseHeader: string | null;
 };
 
+export type WalletCommandPreset = {
+  id: string;
+  label: string;
+  command: string;
+  providerId: ManagedWalletProviderId;
+  description: string;
+  example: string;
+};
+
+export type ParsedWalletCommand = {
+  providerId: ManagedWalletProviderId;
+  command: string;
+  query: string;
+};
+
 type WalletPaymentFetch = typeof fetch;
 type GenericRecord = Record<string, unknown>;
+
+const walletCommandPresets: WalletCommandPreset[] = [
+  {
+    id: "stableenrich-answer",
+    label: "StableEnrich / Answer",
+    command: "StableEnrich / Answer",
+    providerId: "stableenrich_answer",
+    description: "Fast cited synthesis for a question or page idea.",
+    example: "StableEnrich / Answer Why does Human Layer stand out?"
+  },
+  {
+    id: "stableenrich-search",
+    label: "StableEnrich / Search",
+    command: "StableEnrich / Search",
+    providerId: "stableenrich_search",
+    description: "Find supporting links and surrounding context.",
+    example: "StableEnrich / Search Human Layer verified-human browser layer"
+  },
+  {
+    id: "twit-search",
+    label: "twit.sh / Search",
+    command: "Twit.sh search",
+    providerId: "twitsh_search",
+    description: "Search live X conversation around a phrase.",
+    example: "Twit.sh search World ID x402 XMTP"
+  }
+];
 
 type ClientWalletPaymentContext = {
   address: `0x${string}`;
@@ -850,8 +892,76 @@ export function getWalletResearchProviders(): WalletResearchProvider[] {
   return Object.values(providers).filter((provider) => !provider.hidden);
 }
 
+export function getWalletCommandPresets(): WalletCommandPreset[] {
+  return walletCommandPresets;
+}
+
 export function getWalletResearchProvider(providerId: ManagedWalletProviderId): WalletResearchProvider {
   return providers[providerId];
+}
+
+export function parseWalletCommand(value: string): ParsedWalletCommand | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const normalized = trimmed.toLowerCase();
+  const aliases: Array<{ prefix: string; providerId: ManagedWalletProviderId; command: string }> = [
+    {
+      prefix: "stableenrich / answer",
+      providerId: "stableenrich_answer",
+      command: "StableEnrich / Answer"
+    },
+    {
+      prefix: "stableenrich answer",
+      providerId: "stableenrich_answer",
+      command: "StableEnrich / Answer"
+    },
+    {
+      prefix: "stableenrich / search",
+      providerId: "stableenrich_search",
+      command: "StableEnrich / Search"
+    },
+    {
+      prefix: "stableenrich search",
+      providerId: "stableenrich_search",
+      command: "StableEnrich / Search"
+    },
+    {
+      prefix: "twit.sh search",
+      providerId: "twitsh_search",
+      command: "Twit.sh search"
+    },
+    {
+      prefix: "twit.sh / search",
+      providerId: "twitsh_search",
+      command: "Twit.sh search"
+    },
+    {
+      prefix: "twitsh search",
+      providerId: "twitsh_search",
+      command: "Twit.sh search"
+    }
+  ];
+
+  for (const alias of aliases) {
+    if (normalized === alias.prefix) {
+      return {
+        providerId: alias.providerId,
+        command: alias.command,
+        query: ""
+      };
+    }
+
+    if (normalized.startsWith(alias.prefix + " ")) {
+      return {
+        providerId: alias.providerId,
+        command: alias.command,
+        query: trimmed.slice(alias.prefix.length).trim()
+      };
+    }
+  }
+
+  return null;
 }
 
 export function supportsClientWalletPayments(providerId: ManagedWalletProviderId): boolean {
@@ -1004,6 +1114,267 @@ export async function runClientWalletResearch(params: {
         page: params.page,
         thread: params.thread,
         provider,
+        payFetch: params.paymentFetch
+      });
+      break;
+    default:
+      liveResult = null;
+  }
+
+  if (liveResult) {
+    return {
+      result: liveResult.result,
+      chargedUsdCents: provider.priceUsdCents,
+      paymentRail: "wallet_signed_x402",
+      paymentResponseHeader: liveResult.paymentResponseHeader
+    };
+  }
+
+  return {
+    result: preview,
+    chargedUsdCents: 0,
+    paymentRail: "preview",
+    paymentResponseHeader: null
+  };
+}
+
+export function buildWalletCommandPreview(params: {
+  providerId: ManagedWalletProviderId;
+  query: string;
+}): WalletResearchResult {
+  const provider = getWalletResearchProvider(params.providerId);
+  const query = compactWhitespace(params.query);
+
+  return {
+    providerId: provider.id,
+    providerLabel: provider.label,
+    priceUsdCents: provider.priceUsdCents,
+    mode: "preview",
+    query,
+    summary: "Preview for " + provider.label + ".",
+    whyItMatters:
+      "This command will run once you approve the wallet signature, then the result is recorded in your wallet history.",
+    bullets: [
+      "Command: " + provider.label,
+      "Query: " + query,
+      "Expected spend: $" + (provider.priceUsdCents / 100).toFixed(2),
+      "Mode switches to live as soon as your wallet signs the x402 request."
+    ],
+    citations: [
+      {
+        label: provider.label,
+        url: "https://human-layer-web.vercel.app/wallet"
+      }
+    ]
+  };
+}
+
+async function callStableEnrichAnswerCommand(params: {
+  provider: WalletResearchProvider;
+  query: string;
+  payFetch: WalletPaymentFetch;
+}): Promise<LiveExecutionResult | null> {
+  const query = compactWhitespace(params.query);
+  const response = await params.payFetch("https://stableenrich.dev/api/exa/answer", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      query,
+      text: true
+    })
+  }).catch(() => null);
+
+  if (!response?.ok) return null;
+
+  const payload = (await response.json().catch(() => null)) as GenericRecord | null;
+  const answer = typeof payload?.answer === "string" ? compactWhitespace(payload.answer) : "";
+  if (!answer) return null;
+
+  const citations = toCitationList(payload?.citations);
+
+  return {
+    paymentResponseHeader: getPaymentResponseHeader(response),
+    result: {
+      providerId: params.provider.id,
+      providerLabel: params.provider.label,
+      priceUsdCents: params.provider.priceUsdCents,
+      mode: "live",
+      query,
+      summary: truncate(answer, 220),
+      whyItMatters: answer,
+      bullets: toTextBullets(answer),
+      citations:
+        citations.length > 0
+          ? citations
+          : [
+              {
+                label: params.provider.label,
+                url: "https://stableenrich.dev"
+              }
+            ]
+    }
+  };
+}
+
+async function callStableEnrichSearchCommand(params: {
+  provider: WalletResearchProvider;
+  query: string;
+  payFetch: WalletPaymentFetch;
+}): Promise<LiveExecutionResult | null> {
+  const query = compactWhitespace(params.query);
+  const response = await params.payFetch("https://stableenrich.dev/api/exa/search", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      query,
+      numResults: 4,
+      type: "auto",
+      contents: {
+        highlights: {
+          query,
+          numSentences: 2,
+          highlightsPerUrl: 1
+        },
+        summary: {
+          query
+        }
+      }
+    })
+  }).catch(() => null);
+
+  if (!response?.ok) return null;
+
+  const payload = (await response.json().catch(() => null)) as GenericRecord | null;
+  const result = buildSearchLikeResult({
+    provider: params.provider,
+    query,
+    records: extractRecordArray(payload),
+    fallbackSummary: "StableEnrich found surrounding sources for this query.",
+    fallbackWhy: "The surrounding context helps a verified human make a faster call.",
+    fallbackUrl: "https://stableenrich.dev"
+  });
+
+  if (!result) return null;
+
+  return {
+    paymentResponseHeader: getPaymentResponseHeader(response),
+    result
+  };
+}
+
+async function callTwitshSearchCommand(params: {
+  provider: WalletResearchProvider;
+  query: string;
+  payFetch: WalletPaymentFetch;
+}): Promise<LiveExecutionResult | null> {
+  const phrase = compactWhitespace(params.query);
+  const requestUrl = new URL("https://twit.sh/tweets/search");
+  requestUrl.searchParams.set("phrase", phrase);
+  requestUrl.searchParams.set("minLikes", "3");
+
+  const response = await params.payFetch(requestUrl, {
+    method: "GET"
+  }).catch(() => null);
+
+  if (!response?.ok) return null;
+
+  const payload = (await response.json().catch(() => null)) as GenericRecord | null;
+  const records = extractRecordArray(payload);
+  const snippets = records
+    .map((record) => {
+      const text = typeof record.text === "string" ? compactWhitespace(record.text) : "";
+      if (!text) return "";
+
+      const author =
+        typeof record.username === "string"
+          ? "@" + record.username + ": "
+          : typeof record.author_username === "string"
+            ? "@" + record.author_username + ": "
+            : "";
+
+      return truncate(author + text, 220);
+    })
+    .filter(Boolean)
+    .slice(0, 4);
+
+  if (snippets.length === 0) return null;
+
+  const citations = records
+    .map((record, index) => getRecordCitation(record, index))
+    .filter((item): item is { label: string; url: string } => Boolean(item))
+    .slice(0, 5);
+
+  return {
+    paymentResponseHeader: getPaymentResponseHeader(response),
+    result: {
+      providerId: params.provider.id,
+      providerLabel: params.provider.label,
+      priceUsdCents: params.provider.priceUsdCents,
+      mode: "live",
+      query: phrase,
+      summary: snippets[0],
+      whyItMatters:
+        snippets[1] ??
+        "twit.sh found live conversation around this phrase, which is useful for launch and market context.",
+      bullets: snippets,
+      citations:
+        citations.length > 0
+          ? citations
+          : [
+              {
+                label: "twit.sh",
+                url: "https://twit.sh"
+              }
+            ]
+    }
+  };
+}
+
+export async function runClientWalletCommand(params: {
+  providerId: ManagedWalletProviderId;
+  query: string;
+  paymentFetch?: WalletPaymentFetch | null;
+}): Promise<WalletResearchExecution> {
+  const provider = getWalletResearchProvider(params.providerId);
+  const preview = buildWalletCommandPreview({
+    providerId: params.providerId,
+    query: params.query
+  });
+
+  if (provider.executionMode !== "wallet_signed_x402" || !params.paymentFetch) {
+    return {
+      result: preview,
+      chargedUsdCents: 0,
+      paymentRail: "preview",
+      paymentResponseHeader: null
+    };
+  }
+
+  let liveResult: LiveExecutionResult | null = null;
+
+  switch (params.providerId) {
+    case "stableenrich_answer":
+      liveResult = await callStableEnrichAnswerCommand({
+        provider,
+        query: params.query,
+        payFetch: params.paymentFetch
+      });
+      break;
+    case "stableenrich_search":
+      liveResult = await callStableEnrichSearchCommand({
+        provider,
+        query: params.query,
+        payFetch: params.paymentFetch
+      });
+      break;
+    case "twitsh_search":
+      liveResult = await callTwitshSearchCommand({
+        provider,
+        query: params.query,
         payFetch: params.paymentFetch
       });
       break;

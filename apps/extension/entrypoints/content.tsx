@@ -171,6 +171,18 @@ export default defineContentScript({
       const shadowRoot = host.attachShadow({ mode: "open" });
       document.body.appendChild(host);
 
+      const style = document.createElement("style");
+      style.textContent = `
+        * {
+          box-sizing: border-box;
+        }
+
+        section[data-state]::-webkit-scrollbar {
+          display: none;
+        }
+      `;
+      shadowRoot.appendChild(style);
+
       const mountPoint = document.createElement("div");
       shadowRoot.appendChild(mountPoint);
 

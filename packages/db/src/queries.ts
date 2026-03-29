@@ -2812,7 +2812,7 @@ export async function updateManagedWalletSettings(params: {
 
 export async function recordWalletResearchPayment(params: {
   profileId: string;
-  pageId: string;
+  pageId?: string | null;
   provider: ManagedWalletProviderId;
   amountUsdCents: number;
   description: string;
@@ -2828,7 +2828,7 @@ export async function recordWalletResearchPayment(params: {
     await tx.insert(x402Events).values({
       profileId: params.profileId,
       walletId: wallet.walletId,
-      pageId: params.pageId,
+      pageId: params.pageId ?? null,
       kind: "wallet_research",
       provider: params.provider,
       description: params.description,

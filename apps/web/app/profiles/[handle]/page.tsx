@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 
 import { FollowProfileButton } from "../../../components/follow-profile-button";
 import { HelpfulButton } from "../../../components/helpful-button";
+import { LogoutButton } from "../../../components/logout-button";
 import { MessageRequestButton } from "../../../components/message-request-button";
 import { ProfileSafetyActions } from "../../../components/profile-safety-actions";
 import { ReportCommentButton } from "../../../components/report-comment-button";
@@ -102,7 +103,16 @@ export default async function ProfilePage(props: {
           {viewer && viewer.id !== profile.id ? (
             <div className="action-row">
               <FollowProfileButton profileId={profile.id} />
-              <MessageRequestButton recipientHandle={profile.handle} recipientProfileId={profile.id} />
+              {isDemoProfile ? (
+                <Link
+                  className="button secondary subtle"
+                  href={"/messages?demoCompose=" + encodeURIComponent(profile.handle)}
+                >
+                  {"Message @" + profile.handle}
+                </Link>
+              ) : (
+                <MessageRequestButton recipientHandle={profile.handle} recipientProfileId={profile.id} />
+              )}
             </div>
           ) : null}
         </div>
@@ -289,6 +299,16 @@ export default async function ProfilePage(props: {
           ))
         )}
       </section>
+
+      {viewer && viewer.id === profile.id ? (
+        <section className="card stack">
+          <div className="section-header">
+            <h2>Session</h2>
+            <span className="muted">This only logs out this browser session.</span>
+          </div>
+          <LogoutButton />
+        </section>
+      ) : null}
     </div>
   );
 }

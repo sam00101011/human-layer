@@ -73,7 +73,7 @@ describe("wallet research route", () => {
     });
   });
 
-  it("requires a page id", async () => {
+  it("requires a result payload", async () => {
     mocks.getAuthenticatedProfileFromRequest.mockResolvedValue({
       id: "profile-1",
       handle: "demo_builder"
@@ -88,7 +88,7 @@ describe("wallet research route", () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
-      error: "pageId is required"
+      error: "result is required"
     });
   });
 
@@ -180,6 +180,55 @@ describe("wallet research route", () => {
         pageKind: "github_repo",
         paymentRail: "preview",
         paymentResponseHeader: null
+      }
+    });
+    expect(response.status).toBe(200);
+  });
+
+  it("records a wallet command without a page", async () => {
+    mocks.getAuthenticatedProfileFromRequest.mockResolvedValue({
+      id: "profile-1",
+      handle: "demo_builder"
+    });
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/wallet/research", {
+        method: "POST",
+        body: JSON.stringify({
+          provider: "exa",
+          description: "Exa research: Human Layer",
+          metadata: {
+            command: "StableEnrich / Answer"
+          },
+          result: {
+            providerId: "exa",
+            providerLabel: "Exa research",
+            priceUsdCents: 15,
+            mode: "preview",
+            query: "Why does Human Layer matter?",
+            summary: "Summary",
+            whyItMatters: "Why it matters",
+            bullets: ["A", "B"],
+            citations: []
+          }
+        })
+      })
+    );
+
+    expect(mocks.recordWalletResearchPayment).toHaveBeenCalledWith({
+      profileId: "profile-1",
+      pageId: null,
+      provider: "exa",
+      amountUsdCents: 0,
+      description: "Exa research: Human Layer",
+      status: "preview",
+      metadata: {
+        query: "Why does Human Layer matter?",
+        pageHost: null,
+        pageKind: null,
+        paymentRail: "preview",
+        paymentResponseHeader: null,
+        command: "StableEnrich / Answer"
       }
     });
     expect(response.status).toBe(200);

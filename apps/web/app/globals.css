@@ -676,6 +676,32 @@ input[placeholder="builder_signal"] {
   padding: 16px;
 }
 
+.wallet-settings-anchor {
+  align-items: flex-end;
+}
+
+.wallet-disclosure-button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.wallet-disclosure-icon {
+  color: var(--meta);
+  transition: transform 150ms var(--ease);
+}
+
+.wallet-disclosure-icon.open {
+  transform: rotate(180deg);
+}
+
 .demo-user-badge {
   background: #111;
   color: #fff;
@@ -1197,6 +1223,40 @@ button:focus-visible {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
+}
+
+.wallet-command-bar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: #111;
+  color: #fff;
+}
+
+.wallet-command-bar.compact {
+  padding: 10px 12px;
+}
+
+.wallet-command-prompt {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.wallet-command-input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  outline: none;
+}
+
+.wallet-command-input::placeholder {
+  color: rgba(255, 255, 255, 0.45);
 }
 
 .wallet-meta-card,

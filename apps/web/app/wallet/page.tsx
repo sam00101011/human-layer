@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { findPageById, getManagedWalletSnapshot, getPageThreadSnapshot } from "@human-layer/db";
+import { getManagedWalletSnapshot } from "@human-layer/db";
 import { redirect } from "next/navigation";
 
 import { PasskeyWalletCard } from "../../components/passkey-wallet-card";
-import { WalletManagementForm } from "../../components/wallet-management-form";
-import { WalletResearchAction } from "../../components/wallet-research-action";
+import { WalletCommandConsole } from "../../components/wallet-command-console";
+import { WalletProviderAccessPanel } from "../../components/wallet-provider-access-panel";
+import { WalletSettingsPanel } from "../../components/wallet-settings-panel";
 import { getAuthenticatedProfileFromCookies } from "../lib/auth";
 import { getWalletResearchProviders } from "../lib/wallet-tools";
 
@@ -26,20 +27,13 @@ function formatProviderLabel(providerId: string | null | undefined, providerLabe
   return providerLabels.get(providerId) ?? providerId;
 }
 
-export default async function WalletPage(props: {
-  searchParams: Promise<{ pageId?: string }>;
-}) {
+export default async function WalletPage() {
   const viewer = await getAuthenticatedProfileFromCookies();
   if (!viewer) {
     redirect("/verify?returnUrl=/wallet");
   }
 
-  const searchParams = await props.searchParams;
-  const [wallet, sourcePage] = await Promise.all([
-    getManagedWalletSnapshot(viewer.id),
-    typeof searchParams.pageId === "string" ? findPageById(searchParams.pageId) : Promise.resolve(null)
-  ]);
-  const sourceThread = sourcePage ? await getPageThreadSnapshot(sourcePage.id, viewer.id) : null;
+  const wallet = await getManagedWalletSnapshot(viewer.id);
   const providers = getWalletResearchProviders();
   const providerLabels = new Map(providers.map((provider) => [provider.id, provider.label]));
 
@@ -67,6 +61,12 @@ export default async function WalletPage(props: {
         </div>
       </section>
 
+      <WalletCommandConsole
+        enabledProviders={wallet?.enabledProviders ?? []}
+        linkedWalletAddress={wallet?.walletAddress ?? null}
+        providers={providers}
+      />
+
       <PasskeyWalletCard
         linkedNetwork={wallet?.network ?? null}
         linkedStatus={wallet?.status ?? null}
@@ -78,6 +78,16 @@ export default async function WalletPage(props: {
       {wallet ? (
         <>
           <section className="card stack">
+            <div className="section-header">
+              <h2>Wallet overview</h2>
+              <WalletSettingsPanel
+                initialDailySpendLimitUsdCents={wallet.dailySpendLimitUsdCents}
+                initialDefaultProvider={wallet.defaultProvider}
+                initialEnabledProviders={wallet.enabledProviders}
+                initialSpendingEnabled={wallet.spendingEnabled}
+                providers={providers}
+              />
+            </div>
             <div className="metric-grid">
               <div className="stat-card">
                 <strong>{formatUsd(wallet.spentTodayUsdCents)}</strong>
@@ -116,20 +126,6 @@ export default async function WalletPage(props: {
               </div>
             </div>
           </section>
-
-          <section className="card stack">
-            <div className="section-header">
-              <h2>Wallet management</h2>
-              <span className="muted">Control spend, choose providers, and keep the default simple.</span>
-            </div>
-            <WalletManagementForm
-              initialDailySpendLimitUsdCents={wallet.dailySpendLimitUsdCents}
-              initialDefaultProvider={wallet.defaultProvider}
-              initialEnabledProviders={wallet.enabledProviders}
-              initialSpendingEnabled={wallet.spendingEnabled}
-              providers={providers}
-            />
-          </section>
         </>
       ) : (
         <section className="card stack">
@@ -146,73 +142,7 @@ export default async function WalletPage(props: {
         </section>
       )}
 
-      <section className="card stack">
-        <div className="section-header">
-          <h2>Provider access</h2>
-          <span className="muted">
-            Native x402 providers run with your connected wallet today. Preview-only providers stay visible so
-            the roadmap is clear without pretending they are server-custodied.
-          </span>
-        </div>
-        <div className="topic-grid">
-          {providers.map((provider) => (
-            <article className="topic-card" key={provider.id}>
-              <div className="chip-row">
-                <span className="trust-badge">{provider.label}</span>
-                {wallet ? (
-                  <span
-                    className={
-                      wallet.enabledProviders.includes(provider.id) ? "pill" : "trust-badge soft"
-                    }
-                  >
-                    {wallet.enabledProviders.includes(provider.id) ? "Enabled" : "Disabled"}
-                  </span>
-                ) : null}
-                <span className="trust-badge soft">
-                  {provider.executionMode === "wallet_signed_x402" ? "Wallet-signed" : "Preview"}
-                </span>
-              </div>
-              <p className="muted">{provider.description}</p>
-              <span className="small-copy muted">{formatUsd(provider.priceUsdCents)} per request</span>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="card stack">
-        <div className="section-header">
-          <h2>Research this page</h2>
-          <span className="muted">
-            {sourcePage
-              ? "Run a wallet-backed research action on the page you came from."
-              : "Open this page from a Human Layer page thread to run research on a specific URL."}
-          </span>
-        </div>
-        {!wallet ? (
-          <p className="muted">Link a passkey wallet first, then return here to run wallet-signed research.</p>
-        ) : sourcePage && sourceThread ? (
-          <div className="stack">
-            <div className="wallet-meta-card">
-              <span className="muted small-copy">Selected page</span>
-              <strong>{sourcePage.title}</strong>
-              <span className="muted">{sourcePage.host}</span>
-            </div>
-            <WalletResearchAction
-              enabledProviders={wallet.enabledProviders}
-              initialProviderId={wallet.defaultProvider}
-              linkedWalletAddress={wallet.walletAddress}
-              page={sourcePage}
-              pageId={sourcePage.id}
-              providers={providers}
-              thread={sourceThread}
-            />
-          </div>
-        ) : (
-          <p className="muted">
-            Start from a Human Layer page thread and tap <strong>Research with wallet</strong> to run this flow.
-          </p>
-        )}
-      </section>
+      <WalletProviderAccessPanel enabledProviders={wallet?.enabledProviders ?? []} providers={providers} />
 
       {wallet ? (
         <section className="card stack">

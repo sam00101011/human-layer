@@ -1,7 +1,9 @@
 import Link from "next/link";
+import { DEMO_PROFILE_DEFINITIONS } from "@human-layer/core";
 import { getManagedWalletSnapshot, getMessagingInboxForProfile } from "@human-layer/db";
 import { redirect } from "next/navigation";
 
+import { DemoMessagingPanel } from "../../components/demo-messaging-panel";
 import { MessageRequestActions } from "../../components/message-request-actions";
 import { ProfileHandleLink } from "../../components/profile-handle-link";
 import { XmtpLiveChatShell } from "../../components/xmtp-live-chat-shell";
@@ -184,19 +186,25 @@ function MessageList({ items, emptyCopy, incoming = false }: MessageListProps) {
   );
 }
 
-export default async function MessagesPage() {
+export default async function MessagesPage(props: {
+  searchParams: Promise<{ demoCompose?: string }>;
+}) {
   const viewer = await getAuthenticatedProfileFromCookies();
   if (!viewer) {
     redirect("/verify?returnUrl=/messages");
   }
+  const searchParams = await props.searchParams;
 
   const [inbox, wallet] = await Promise.all([
     getMessagingInboxForProfile(viewer.id),
     getManagedWalletSnapshot(viewer.id)
   ]);
   const demoMessaging = buildDemoMessagingState(viewer.handle ?? null);
-  const incomingItems: MessageListItem[] = [...demoMessaging.incomingPending, ...inbox.incomingPending];
-  const outgoingItems: MessageListItem[] = [...demoMessaging.outgoingPending, ...inbox.outgoingPending];
+  const incomingItems: MessageListItem[] = [...inbox.incomingPending];
+  const outgoingItems: MessageListItem[] = [...inbox.outgoingPending];
+  const demoHandles = DEMO_PROFILE_DEFINITIONS.map((profile) => profile.handle).filter(
+    (handle) => handle !== viewer.handle?.toLowerCase()
+  );
 
   return (
     <div className="page-shell stack">
@@ -216,22 +224,14 @@ export default async function MessagesPage() {
       </section>
 
       <section className="card stack">
-        <div className="section-header">
-          <h2>Recent conversations</h2>
-        </div>
-        <div className="stack compact">
-          {demoMessaging.conversations.map((conversation) => (
-            <article className="comment-card interactive stack" key={conversation.id}>
-              <div className="section-header">
-                <div className="chip-row">
-                  <ProfileHandleLink handle={conversation.peerHandle} />
-                </div>
-                <span className="muted small-copy">{formatDateTime(conversation.createdAt)}</span>
-              </div>
-              <p>{conversation.preview}</p>
-            </article>
-          ))}
-        </div>
+        <DemoMessagingPanel
+          availableHandles={demoHandles}
+          initialComposeHandle={searchParams.demoCompose ?? null}
+          initialConversations={demoMessaging.conversations}
+          initialIncomingRequests={demoMessaging.incomingPending}
+          initialOutgoingRequests={demoMessaging.outgoingPending}
+          viewerHandle={viewer.handle ?? null}
+        />
       </section>
 
       <section className="card stack">
@@ -249,7 +249,6 @@ export default async function MessagesPage() {
       <section className="card stack">
         <div className="section-header">
           <h2>Incoming requests</h2>
-          <span className="muted">Two demo requests are shown here as a preview, then any real verified-human requests appear below them.</span>
         </div>
         <MessageList emptyCopy="No incoming requests yet." incoming items={incomingItems} />
       </section>
@@ -257,7 +256,6 @@ export default async function MessagesPage() {
       <section className="card stack">
         <div className="section-header">
           <h2>Outgoing requests</h2>
-          <span className="muted">One demo request is shown first, then your real verified-human requests.</span>
         </div>
         <MessageList emptyCopy="No outgoing requests yet." items={outgoingItems} />
       </section>
