@@ -1,22 +1,29 @@
 import type { CSSProperties, ReactNode } from "react";
 import {
   buildPageContextSummary,
+  explainHumanTakeRecommendation,
+  sortHumanTakes,
+  type CommentProjection,
   type NormalizedPageCandidate,
   type PageLookupResponse,
   type Verdict
 } from "@human-layer/core";
-import { Bookmark, BookmarkCheck } from "lucide-react";
+import { Bookmark, BookmarkCheck, Sparkles, ThumbsUp } from "lucide-react";
 
 import type { OverlaySurfaceState } from "./OverlayController";
 
 type OverlayViewProps = {
   draftComment: string;
   followedProfileIds: string[];
+  helpfulCommentIds: string[];
+  helpfulCountsByCommentId: Record<string, number>;
+  helpfulSubmittingCommentIds: string[];
   isSaved: boolean;
   isSubmitting: boolean;
   lookup: PageLookupResponse | null;
   onDraftCommentChange(value: string): void;
   onFollow(profileId: string): void;
+  onHelpful(commentId: string): void;
   onOpenBookmarks(): void;
   onOpenFeedback(): void;
   onOpenPage(pageId: string): void;
@@ -125,6 +132,83 @@ function renderPageContext(lookup: PageLookupResponse) {
       ) : null}
       <p style={helperNoteStyle}>{context.summary}</p>
     </div>
+  );
+}
+
+function getRankedOverlayComments(
+  lookup: PageLookupResponse,
+  helpfulCountsByCommentId: Record<string, number>
+): CommentProjection[] {
+  if (!lookup.thread) return [];
+
+  const deduped = new Map<string, CommentProjection>();
+  const candidates = [
+    ...(lookup.thread.topHumanTake ? [lookup.thread.topHumanTake] : []),
+    ...lookup.thread.recentComments
+  ];
+
+  for (const comment of candidates) {
+    deduped.set(comment.commentId, {
+      ...comment,
+      helpfulCount: helpfulCountsByCommentId[comment.commentId] ?? comment.helpfulCount
+    });
+  }
+
+  return sortHumanTakes([...deduped.values()]);
+}
+
+function renderRecommendationReasons(reasons: string[]) {
+  if (reasons.length === 0) return null;
+
+  return (
+    <div style={recommendationRowStyle}>
+      {reasons.map((reason) => (
+        <span key={reason} style={recommendationChipStyle}>
+          <Sparkles aria-hidden="true" size={12} strokeWidth={2.2} />
+          <span>{reason}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function renderHelpfulButton(props: {
+  comment: CommentProjection;
+  helpfulCommentIds: string[];
+  helpfulSubmittingCommentIds: string[];
+  onHelpful(commentId: string): void;
+  viewerProfileId?: string;
+}) {
+  const alreadyHelpful = props.helpfulCommentIds.includes(props.comment.commentId);
+  const isSubmitting = props.helpfulSubmittingCommentIds.includes(props.comment.commentId);
+  const isOwnComment = props.viewerProfileId === props.comment.profileId;
+
+  let label = `Helpful ${props.comment.helpfulCount}`;
+  if (isOwnComment) {
+    label = `Your take • ${props.comment.helpfulCount}`;
+  } else if (alreadyHelpful) {
+    label = `Marked helpful • ${props.comment.helpfulCount}`;
+  } else if (isSubmitting) {
+    label = "Marking helpful...";
+  }
+
+  return (
+    <button
+      disabled={isOwnComment || alreadyHelpful || isSubmitting}
+      onClick={() => props.onHelpful(props.comment.commentId)}
+      style={{
+        ...secondaryButtonStyle,
+        padding: "7px 10px",
+        fontSize: 12,
+        opacity: isOwnComment || alreadyHelpful || isSubmitting ? 0.6 : 1
+      }}
+      type="button"
+    >
+      <span style={buttonIconLabelStyle}>
+        <ThumbsUp aria-hidden="true" size={14} strokeWidth={2.2} />
+        <span>{label}</span>
+      </span>
+    </button>
   );
 }
 
@@ -298,6 +382,10 @@ export function OverlayView(props: OverlayViewProps) {
     );
   }
 
+  const rankedComments = getRankedOverlayComments(lookup, props.helpfulCountsByCommentId);
+  const topTake = rankedComments[0] ?? null;
+  const recommendedComments = rankedComments.slice(topTake ? 1 : 0);
+
   return (
     <section data-state={lookup.state} style={panelStyle}>
       <div style={{ display: "grid", gap: 8 }}>
@@ -360,75 +448,95 @@ export function OverlayView(props: OverlayViewProps) {
           )}
           <div style={{ display: "grid", gap: 6 }}>
             <span style={sectionLabelStyle}>Top human take</span>
-            {lookup.thread.topHumanTake ? (
-              <div style={{ display: "grid", gap: 6 }}>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  <span style={miniTrustChipStyle}>Verified take</span>
-                  {lookup.thread.topHumanTake.reputation
-                    ? renderReputationBadge(lookup.thread.topHumanTake.reputation.label)
-                    : null}
-                </div>
-                {renderProfileHandle({
-                  handle: lookup.thread.topHumanTake.profileHandle,
-                  onOpenProfile: props.onOpenProfile
+            {topTake ? (
+             <div style={{ display: "grid", gap: 6 }}>
+               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                 <span style={miniTrustChipStyle}>Verified take</span>
+                  {topTake.reputation
+                    ? renderReputationBadge(topTake.reputation.label)
+                   : null}
+               </div>
+                {renderRecommendationReasons(explainHumanTakeRecommendation(topTake, rankedComments))}
+               {renderProfileHandle({
+                  handle: topTake.profileHandle,
+                 onOpenProfile: props.onOpenProfile
+               })}
+             </div>
+           ) : null}
+            <p style={quoteStyle}>{topTake?.body ?? "No top human take yet."}</p>
+            {topTake ? (
+              <div style={actionRowStyle}>
+                {renderHelpfulButton({
+                  comment: topTake,
+                  helpfulCommentIds: props.helpfulCommentIds,
+                  helpfulSubmittingCommentIds: props.helpfulSubmittingCommentIds,
+                  onHelpful: props.onHelpful,
+                  viewerProfileId: lookup.viewer?.profileId
                 })}
-              </div>
-            ) : null}
-            <p style={quoteStyle}>{lookup.thread.topHumanTake?.body ?? "No top human take yet."}</p>
-            {lookup.thread.topHumanTake
-              ? renderFollowButton({
-                  lookup,
-                  followedProfileIds: props.followedProfileIds,
-                  profileId: lookup.thread.topHumanTake.profileId,
-                  profileHandle: lookup.thread.topHumanTake.profileHandle,
-                  onFollow: props.onFollow
-                })
-              : null}
-            {lookup.thread.topHumanTake
-              ? renderReportButton({
-                  commentId: lookup.thread.topHumanTake.commentId,
-                  isSubmitting: props.isSubmitting,
-                  onReportComment: props.onReportComment,
-                  reportedCommentIds: props.reportedCommentIds
-                })
-              : null}
-          </div>
-          <div style={{ display: "grid", gap: 6 }}>
-            <span style={sectionLabelStyle}>Verdicts</span>
-            {renderVerdictCounts(lookup)}
-          </div>
-          <div style={{ display: "grid", gap: 6 }}>
-            <span style={sectionLabelStyle}>Recent verified takes</span>
-            {lookup.thread.recentComments.map((comment) => (
-              <div key={comment.commentId} style={commentStyle}>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  <span style={miniTrustChipStyle}>Verified take</span>
-                  {comment.reputation ? renderReputationBadge(comment.reputation.label) : null}
-                </div>
-                {renderProfileHandle({
-                  handle: comment.profileHandle,
-                  onOpenProfile: props.onOpenProfile
-                })}
-                <span style={mutedStyle}>{comment.body}</span>
                 {renderFollowButton({
                   lookup,
                   followedProfileIds: props.followedProfileIds,
-                  profileId: comment.profileId,
-                  profileHandle: comment.profileHandle,
+                  profileId: topTake.profileId,
+                  profileHandle: topTake.profileHandle,
                   onFollow: props.onFollow
                 })}
                 {renderReportButton({
-                  commentId: comment.commentId,
+                  commentId: topTake.commentId,
                   isSubmitting: props.isSubmitting,
                   onReportComment: props.onReportComment,
                   reportedCommentIds: props.reportedCommentIds
                 })}
               </div>
+            ) : null}
+         </div>
+         <div style={{ display: "grid", gap: 6 }}>
+           <span style={sectionLabelStyle}>Verdicts</span>
+           {renderVerdictCounts(lookup)}
+         </div>
+         <div style={{ display: "grid", gap: 6 }}>
+            <span style={sectionLabelStyle}>Recommended verified takes</span>
+            {recommendedComments.length === 0 ? (
+              <p style={helperNoteStyle}>No other ranked takes yet.</p>
+            ) : recommendedComments.map((comment) => (
+             <div key={comment.commentId} style={commentStyle}>
+               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                 <span style={miniTrustChipStyle}>Verified take</span>
+                 {comment.reputation ? renderReputationBadge(comment.reputation.label) : null}
+               </div>
+                {renderRecommendationReasons(explainHumanTakeRecommendation(comment, rankedComments))}
+               {renderProfileHandle({
+                 handle: comment.profileHandle,
+                 onOpenProfile: props.onOpenProfile
+               })}
+               <span style={mutedStyle}>{comment.body}</span>
+                <div style={actionRowStyle}>
+                  {renderHelpfulButton({
+                    comment,
+                    helpfulCommentIds: props.helpfulCommentIds,
+                    helpfulSubmittingCommentIds: props.helpfulSubmittingCommentIds,
+                    onHelpful: props.onHelpful,
+                    viewerProfileId: lookup.viewer?.profileId
+                  })}
+                  {renderFollowButton({
+                    lookup,
+                    followedProfileIds: props.followedProfileIds,
+                    profileId: comment.profileId,
+                    profileHandle: comment.profileHandle,
+                    onFollow: props.onFollow
+                  })}
+                  {renderReportButton({
+                    commentId: comment.commentId,
+                    isSubmitting: props.isSubmitting,
+                    onReportComment: props.onReportComment,
+                    reportedCommentIds: props.reportedCommentIds
+                  })}
+                </div>
+              </div>
             ))}
-          </div>
-          {renderComposer(props, lookup)}
-        </div>
-      )}
+         </div>
+         {renderComposer(props, lookup)}
+       </div>
+     )}
 
       {props.statusMessage ? <p style={mutedStyle}>{props.statusMessage}</p> : null}
       <div style={footerRowStyle}>
@@ -574,6 +682,25 @@ const miniTrustChipStyle: CSSProperties = {
   padding: "4px 8px",
   background: "rgba(59, 130, 246, 0.16)",
   color: "#bfdbfe",
+  fontSize: 11,
+  fontWeight: 700
+};
+
+const recommendationRowStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 6
+};
+
+const recommendationChipStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  width: "fit-content",
+  borderRadius: 999,
+  padding: "4px 8px",
+  background: "rgba(167, 139, 250, 0.14)",
+  color: "#ddd6fe",
   fontSize: 11,
   fontWeight: 700
 };

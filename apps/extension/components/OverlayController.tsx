@@ -31,10 +31,17 @@ type ErrorResponsePayload = {
   requestId?: string;
 };
 
+type HelpfulVoteResponse = {
+  created?: boolean;
+  helpfulCount?: number;
+  ok?: boolean;
+};
+
 type PendingAction =
   | { type: "submit_take" }
   | { type: "save_page" }
   | { type: "follow_profile"; profileId: string }
+  | { type: "helpful_comment"; commentId: string }
   | { type: "report_comment"; commentId: string }
   | null;
 
@@ -62,6 +69,9 @@ export function OverlayController({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [saved, setSaved] = useState(false);
   const [followedProfileIds, setFollowedProfileIds] = useState<string[]>([]);
+  const [helpfulCommentIds, setHelpfulCommentIds] = useState<string[]>([]);
+  const [helpfulCountsByCommentId, setHelpfulCountsByCommentId] = useState<Record<string, number>>({});
+  const [helpfulSubmittingCommentIds, setHelpfulSubmittingCommentIds] = useState<string[]>([]);
   const [reportedCommentIds, setReportedCommentIds] = useState<string[]>([]);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [authResumeCount, setAuthResumeCount] = useState(0);
@@ -185,6 +195,11 @@ export function OverlayController({
         return;
       }
 
+      if (queuedAction.type === "helpful_comment") {
+        await handleHelpfulComment(queuedAction.commentId);
+        return;
+      }
+
       await handleFollow(queuedAction.profileId);
     }
 
@@ -202,6 +217,9 @@ export function OverlayController({
 
   useEffect(() => {
     trackedOverlayKeyRef.current = null;
+    setHelpfulCommentIds([]);
+    setHelpfulCountsByCommentId({});
+    setHelpfulSubmittingCommentIds([]);
   }, [appUrl, currentUrl]);
 
   useEffect(() => {
@@ -359,6 +377,47 @@ export function OverlayController({
     }
   }
 
+  async function handleHelpfulComment(commentId: string) {
+    const authToken = await getAuthorizedToken();
+    if (!authToken) {
+      setPendingAction({ type: "helpful_comment", commentId });
+      setStatusMessage("Finish verification to mark this take as helpful.");
+      openVerify();
+      return;
+    }
+
+    setHelpfulSubmittingCommentIds((current) =>
+      current.includes(commentId) ? current : [...current, commentId]
+    );
+
+    try {
+      const response = await sendApiProxyRequest<HelpfulVoteResponse>({
+        appUrl,
+        path: `/api/comments/${commentId}/helpful`,
+        method: "POST",
+        authToken
+      }).catch(() => null);
+
+      if (!response?.ok || !response.json) {
+        const payload = (response?.json ?? null) as { error?: string } | null;
+        setStatusMessage(payload?.error ?? "Could not mark this take as helpful.");
+        return;
+      }
+
+      const payload = response.json;
+      setHelpfulCountsByCommentId((current) => ({
+        ...current,
+        [commentId]: payload.helpfulCount ?? current[commentId] ?? 0
+      }));
+      setHelpfulCommentIds((current) =>
+        current.includes(commentId) ? current : [...current, commentId]
+      );
+      setStatusMessage(payload.created ? "Helpful feedback recorded." : "You already marked this take as helpful.");
+    } finally {
+      setHelpfulSubmittingCommentIds((current) => current.filter((value) => value !== commentId));
+    }
+  }
+
   async function handleReportComment(commentId: string) {
     const authToken = await getAuthorizedToken();
     if (!authToken) {
@@ -385,11 +444,15 @@ export function OverlayController({
     <OverlayView
       draftComment={draftComment}
       followedProfileIds={followedProfileIds}
+      helpfulCommentIds={helpfulCommentIds}
+      helpfulCountsByCommentId={helpfulCountsByCommentId}
+      helpfulSubmittingCommentIds={helpfulSubmittingCommentIds}
       isSaved={saved}
       isSubmitting={isSubmitting}
       lookup={lookup}
       onDraftCommentChange={setDraftComment}
       onFollow={handleFollow}
+      onHelpful={handleHelpfulComment}
       onOpenBookmarks={openBookmarks}
       onOpenPage={openPage}
       onOpenProfile={openProfile}

@@ -7,11 +7,15 @@ import { OverlayView } from "../components/OverlayView";
 const baseProps = {
   draftComment: "",
   followedProfileIds: [],
+  helpfulCommentIds: [],
+  helpfulCountsByCommentId: {},
+  helpfulSubmittingCommentIds: [],
   isSaved: false,
   isSubmitting: false,
   lookup: null,
   onDraftCommentChange: vi.fn(),
   onFollow: vi.fn(),
+  onHelpful: vi.fn(),
   onOpenBookmarks: vi.fn(),
   onOpenFeedback: vi.fn(),
   onOpenPage: vi.fn(),
@@ -147,9 +151,56 @@ describe("OverlayView", () => {
       }
     });
 
-    expect(screen.getAllByText("Worth the read.")).toHaveLength(2);
-    expect(screen.getByText("Verdicts")).toBeTruthy();
-    expect(screen.getByText("Post take")).toBeTruthy();
+    expect(screen.getByText("Worth the read.")).toBeTruthy();
+   expect(screen.getByText("Verdicts")).toBeTruthy();
+    expect(screen.getByText("Recommended verified takes")).toBeTruthy();
+    expect(screen.getByText("Most helpful so far")).toBeTruthy();
+   expect(screen.getByText("Post take")).toBeTruthy();
+  });
+
+  it("lets people mark a take as helpful directly from the overlay", () => {
+    const onHelpful = vi.fn();
+
+    const view = renderOverlay(
+      {
+        supported: true,
+        state: "active",
+        page: {
+          id: "page-1",
+          pageKind: "github_repo",
+          canonicalUrl: "https://github.com/vercel/next.js",
+          canonicalKey: "https://github.com/vercel/next.js",
+          host: "github.com",
+          title: "vercel/next.js"
+        },
+        thread: {
+          verdictCounts: {
+            useful: 1,
+            misleading: 0,
+            outdated: 0,
+            scam: 0
+          },
+          topHumanTake: {
+            commentId: "c1",
+            profileId: "profile-1",
+            profileHandle: "demo_builder",
+            body: "Worth the read.",
+            helpfulCount: 4,
+            createdAt: "2026-03-28T00:00:00.000Z"
+          },
+          recentComments: []
+        },
+        viewer: {
+          profileId: "viewer-1",
+          handle: "viewer"
+        }
+      },
+      { onHelpful }
+    );
+
+    fireEvent.click(within(view.container).getByRole("button", { name: "Helpful 4" }));
+
+    expect(onHelpful).toHaveBeenCalledWith("c1");
   });
 
   it("labels the save action as a bookmark", () => {
