@@ -41,10 +41,18 @@ function createDefaultMockHumanKey() {
 function isWorldIdRequestConfig(value: unknown): value is WorldIdRequestConfig {
   return Boolean(
     value &&
-      typeof value === "object" &&
-      "appId" in value &&
-      "rpContext" in value
+     typeof value === "object" &&
+     "appId" in value &&
+     "rpContext" in value
   );
+}
+
+function shouldUseWorldIdReturnTo() {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  const isAppleMobile = /iPhone|iPad|iPod/i.test(ua);
+  const isAndroid = /Android/i.test(ua);
+  return !(isAppleMobile || isAndroid);
 }
 
 export function WorldIdVerifyForm({
@@ -63,15 +71,20 @@ export function WorldIdVerifyForm({
   const [isWidgetOpen, setIsWidgetOpen] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [showAllInterests, setShowAllInterests] = useState(false);
+  const [useWorldIdReturnTo, setUseWorldIdReturnTo] = useState(false);
 
   useEffect(() => {
-    if (worldIdConfig.mode !== "mock") return;
+   if (worldIdConfig.mode !== "mock") return;
 
     const stored = window.localStorage.getItem("human-layer/mock-human-key");
     const nextValue = stored ?? createDefaultMockHumanKey();
     window.localStorage.setItem("human-layer/mock-human-key", nextValue);
     setMockHumanKey(nextValue);
   }, [worldIdConfig.mode]);
+
+  useEffect(() => {
+    setUseWorldIdReturnTo(shouldUseWorldIdReturnTo());
+  }, []);
 
   useEffect(() => {
     if (!handoff) {
@@ -283,7 +296,6 @@ export function WorldIdVerifyForm({
     selectedTags.length >= MAX_PROFILE_INTERESTS
       ? []
       : getRelatedInterestTags(selectedTags, Math.min(10, MAX_PROFILE_INTERESTS + 2));
-
   return (
     <section className="card stack">
       <div className="stack">
@@ -293,15 +305,20 @@ export function WorldIdVerifyForm({
           </span>
           <h1>Verify with World ID</h1>
         </div>
-        <p className="muted">
-          Human Layer uses World ID to unlock one-human write access. Create a pseudonymous handle,
-          pick your interests, then return to the same page with write actions enabled.
+      <p className="muted">
+        Human Layer uses World ID to unlock one-human write access. Create a pseudonymous handle,
+        pick your interests, then return to the same page with write actions enabled.
+      </p>
+      {!useWorldIdReturnTo && worldIdConfig.mode === "remote" ? (
+        <p className="muted small-copy">
+          On mobile, approve in World App and then switch back to Safari to finish sign-in.
         </p>
-        {worldIdConfig.mode === "mock" ? (
-          <p className="muted small-copy">
-            Mock IDKit mode is active until app credentials are configured.
-          </p>
-        ) : null}
+      ) : null}
+      {worldIdConfig.mode === "mock" ? (
+        <p className="muted small-copy">
+          Mock IDKit mode is active until app credentials are configured.
+        </p>
+      ) : null}
       </div>
 
       <label className="field">
@@ -504,7 +521,11 @@ export function WorldIdVerifyForm({
               ? deviceLegacy({ signal: requestConfig.signal })
               : orbLegacy({ signal: requestConfig.signal })
           }
-          return_to={typeof window === "undefined" ? undefined : window.location.href}
+          return_to={
+            typeof window === "undefined" || !useWorldIdReturnTo
+              ? undefined
+              : window.location.href
+          }
           rp_context={requestConfig.rpContext}
         />
       ) : null}
