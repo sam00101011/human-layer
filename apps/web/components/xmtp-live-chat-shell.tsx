@@ -115,6 +115,8 @@ export function XmtpLiveChatShell({
   const clientRef = useRef<XmtpClientLike | null>(null);
   const conversationRef = useRef<XmtpConversationLike | null>(null);
   const streamRef = useRef<{ return?(): Promise<unknown> } | null>(null);
+  const autoStartAttemptedRef = useRef(false);
+  const sessionRequestedRef = useRef(false);
   const [sessionStatus, setSessionStatus] = useState<"idle" | "connecting" | "initializing" | "ready">("idle");
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [linkedInboxId, setLinkedInboxId] = useState(initialInboxId ?? null);
@@ -139,6 +141,32 @@ export function XmtpLiveChatShell({
       clientRef.current?.close();
     };
   }, []);
+
+  useEffect(() => {
+    if (!linkedWalletAddress || autoStartAttemptedRef.current) {
+      return;
+    }
+
+    autoStartAttemptedRef.current = true;
+    sessionRequestedRef.current = true;
+    void initializeSession();
+  }, [linkedWalletAddress]);
+
+  useEffect(() => {
+    if (!sessionRequestedRef.current) {
+      return;
+    }
+
+    if (sessionStatus === "ready" || sessionStatus === "initializing") {
+      return;
+    }
+
+    if (!connectedAddress || !walletClient) {
+      return;
+    }
+
+    void initializeSession();
+  }, [connectedAddress, sessionStatus, walletClient]);
 
   async function ensureConnectedAddress(): Promise<`0x${string}` | null> {
     if (connectedAddress) {
@@ -197,6 +225,8 @@ export function XmtpLiveChatShell({
       return;
     }
 
+    sessionRequestedRef.current = true;
+
     const nextAddress = await ensureConnectedAddress();
     if (!nextAddress) {
       return;
@@ -212,7 +242,8 @@ export function XmtpLiveChatShell({
     }
 
     if (!walletClient) {
-      setSessionError("Wallet connected. Click again to start the XMTP session.");
+      setSessionStatus("connecting");
+      setSessionError(null);
       return;
     }
 
@@ -239,10 +270,18 @@ export function XmtpLiveChatShell({
       clientRef.current?.close();
       clientRef.current = client;
       setSessionStatus("ready");
+      setSessionError(null);
 
       if (client.inboxId && client.inboxId !== linkedInboxId) {
         await bindInbox(client.inboxId);
         setLinkedInboxId(client.inboxId);
+      }
+
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(
+          `human-layer-secure-chat:${nextAddress.toLowerCase()}`,
+          "ready"
+        );
       }
 
       if (activePeerInboxId) {
@@ -335,43 +374,44 @@ export function XmtpLiveChatShell({
           {linkedInboxId ? "Inbox linked" : "Inbox not linked yet"}
         </span>
         <span className={sessionStatus === "ready" ? "pill" : "trust-badge soft"}>
-          {sessionStatus === "ready" ? "XMTP session ready" : "Session inactive"}
+          {sessionStatus === "ready" ? "Secure chat ready" : "Secure chat offline"}
         </span>
         {linkedWalletAddress ? <span className="trust-badge soft">{formatAddress(linkedWalletAddress)}</span> : null}
       </div>
 
       {linkedInboxId ? (
         <div className="wallet-meta-card">
-          <span className="muted small-copy">Linked inbox ID</span>
+          <span className="muted small-copy">Linked secure chat inbox</span>
           <code>{linkedInboxId}</code>
         </div>
       ) : (
         <p className="muted">
-          Start the XMTP session from your connected wallet and Human Layer will save the resulting inbox ID automatically.
+          Human Layer will auto-connect secure chat from your linked wallet on this device and
+          save the resulting inbox ID automatically.
         </p>
       )}
 
-      <div className="action-row">
-        <button
-          className="button"
-          disabled={isPending || sessionStatus === "initializing"}
-          onClick={() => void initializeSession()}
-          type="button"
-        >
-          {sessionStatus === "connecting"
-            ? "Connecting wallet..."
-            : sessionStatus === "initializing"
-              ? "Starting XMTP..."
-              : sessionStatus === "ready"
-                ? "XMTP ready"
-                : "Start XMTP session"}
-        </button>
-        {!linkedWalletAddress ? (
-          <Link className="button secondary subtle" href="/wallet">
-            Open wallet
-          </Link>
-        ) : null}
-      </div>
+      {sessionStatus !== "ready" ? (
+        <div className="action-row">
+          <button
+            className="button"
+            disabled={isPending || sessionStatus === "initializing"}
+            onClick={() => void initializeSession()}
+            type="button"
+          >
+            {sessionStatus === "connecting"
+              ? "Connecting secure chat..."
+              : sessionStatus === "initializing"
+                ? "Starting secure chat..."
+                : "Connect secure chat"}
+          </button>
+          {!linkedWalletAddress ? (
+            <Link className="button secondary subtle" href="/wallet">
+              Open wallet
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
 
       {sessionError ? <span className="error-message">{sessionError}</span> : null}
 
@@ -423,7 +463,10 @@ export function XmtpLiveChatShell({
             </div>
           ) : sessionStatus !== "ready" ? (
             <div className="chat-empty-state">
-              <p className="muted">Start your XMTP session first, then open this chat.</p>
+              <p className="muted">
+                Secure chat is connecting now. If a wallet prompt appears, approve it once and
+                this browser will keep restoring chat until local storage is cleared.
+              </p>
             </div>
           ) : (
             <>
