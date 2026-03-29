@@ -4,6 +4,7 @@ import { getFollowedTopicsForProfile, searchDiscovery } from "@human-layer/db";
 
 import { FollowProfileButton } from "../../components/follow-profile-button";
 import { HelpfulButton } from "../../components/helpful-button";
+import { ProfileHandleLink } from "../../components/profile-handle-link";
 import { ProfileSafetyActions } from "../../components/profile-safety-actions";
 import { getAuthenticatedProfileFromCookies } from "../lib/auth";
 
@@ -221,7 +222,9 @@ export default async function SearchPage(props: {
                             </Link>
                           ))}
                         </div>
-                        <strong>@{profile.handle}</strong>
+                        <strong>
+                          <ProfileHandleLink handle={profile.handle} />
+                        </strong>
                         <p className="muted">{profile.reason}</p>
                         <div className="action-row">
                           <Link className="button secondary subtle" href={`/profiles/${profile.handle}`}>

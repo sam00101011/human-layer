@@ -94,11 +94,17 @@ export function InstallExtensionStatus({
             </div>
             <ol className="legal-list">
               <li>Download the extension package zip.</li>
-              <li>Unzip it somewhere on your computer.</li>
+              <li>
+                Unzip it somewhere on your computer. This creates a folder named{" "}
+                <code>human-layer-extension-hackathon</code>.
+              </li>
               <li>Open <code>chrome://extensions</code>.</li>
               <li>Turn on Developer mode.</li>
               <li>Click <code>Load unpacked</code>.</li>
-              <li>Select the unzipped <code>chrome-mv3</code> folder.</li>
+              <li>
+                Select the unzipped <code>human-layer-extension-hackathon</code> folder, not the
+                zip file itself.
+              </li>
             </ol>
           </section>
 

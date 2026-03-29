@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   getCommentReportReasonLabel,
   getCommentReportReasonOptions,
@@ -277,13 +278,21 @@ export function ModerationQueue({ items }: ModerationQueueProps) {
 
             <div className="stack compact">
               <p className="muted">
-                Reported by @{item.reporterHandle} on {formatDate(item.createdAt)} for{" "}
+                Reported by{" "}
+                <Link className="inline-link" href={`/profiles/${encodeURIComponent(item.reporterHandle)}`}>
+                  @{item.reporterHandle}
+                </Link>{" "}
+                on {formatDate(item.createdAt)} for{" "}
                 <span className="mono">
                   {getCommentReportReasonLabel(item.reasonCode as CommentReportReasonCode)}
                 </span>
               </p>
               <p className="muted">
-                Comment by @{item.authorHandle} on {formatDate(item.commentCreatedAt)}
+                Comment by{" "}
+                <Link className="inline-link" href={`/profiles/${encodeURIComponent(item.authorHandle)}`}>
+                  @{item.authorHandle}
+                </Link>{" "}
+                on {formatDate(item.commentCreatedAt)}
               </p>
               <p className="muted">
                 Author reports {item.authorReportCount} • open {item.authorOpenReportCount} • hidden{" "}

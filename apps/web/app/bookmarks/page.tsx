@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getBookmarkedPagesForProfile } from "@human-layer/db";
 
+import { ProfileHandleLink } from "../../components/profile-handle-link";
 import { getAuthenticatedProfileFromCookies } from "../lib/auth";
 
 function formatPageKind(pageKind: string) {
@@ -42,7 +43,7 @@ export default async function BookmarksPage() {
           <div className="stack compact">
             <div className="chip-row">
               <span className="pill">Bookmarks</span>
-              <span className="eyebrow">@{viewer.handle}</span>
+              <ProfileHandleLink className="eyebrow profile-handle-link" handle={viewer.handle} />
             </div>
             <h1>Saved pages worth coming back to</h1>
             <p className="muted">

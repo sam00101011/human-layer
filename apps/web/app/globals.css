@@ -488,6 +488,17 @@ input[placeholder="builder_signal"] {
   text-decoration: underline;
 }
 
+.profile-handle-link {
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  text-decoration: none;
+}
+
+.profile-handle-link:hover {
+  text-decoration: underline;
+}
+
 /* ===== Hero card ===== */
 .hero-card {
   gap: 20px;

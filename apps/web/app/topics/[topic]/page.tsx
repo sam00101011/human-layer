@@ -11,6 +11,7 @@ import { notFound } from "next/navigation";
 import { FollowTopicButton } from "../../../components/follow-topic-button";
 import { FollowProfileButton } from "../../../components/follow-profile-button";
 import { HelpfulButton } from "../../../components/helpful-button";
+import { ProfileHandleLink } from "../../../components/profile-handle-link";
 import { ProfileSafetyActions } from "../../../components/profile-safety-actions";
 import { getAuthenticatedProfileFromCookies } from "../../lib/auth";
 
@@ -122,14 +123,18 @@ export default async function TopicPage(props: {
           {surface.topTakes[0] ? (
             <article className="trust-card">
               <span className="eyebrow">Lead take</span>
-              <strong>@{surface.topTakes[0].profileHandle}</strong>
+              <strong>
+                <ProfileHandleLink handle={surface.topTakes[0].profileHandle} />
+              </strong>
               <p className="muted small-copy">{surface.topTakes[0].reason}</p>
             </article>
           ) : null}
           {surface.topContributors[0] ? (
             <article className="trust-card">
               <span className="eyebrow">Lead contributor</span>
-              <strong>@{surface.topContributors[0].handle}</strong>
+              <strong>
+                <ProfileHandleLink handle={surface.topContributors[0].handle} />
+              </strong>
               <p className="muted small-copy">{surface.topContributors[0].reason}</p>
             </article>
           ) : null}
@@ -357,7 +362,9 @@ export default async function TopicPage(props: {
                     </Link>
                   ))}
                 </div>
-                <strong>@{profile.handle}</strong>
+                <strong>
+                  <ProfileHandleLink handle={profile.handle} />
+                </strong>
                 <p className="muted">{profile.reason}</p>
                 <div className="action-row">
                   <Link className="button secondary subtle" href={`/profiles/${profile.handle}`}>

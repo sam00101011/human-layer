@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getCommentReportReasonLabel, type CommentReportReasonCode } from "@human-layer/core";
 import type { ModerationAuditItem } from "@human-layer/db";
 
@@ -48,7 +49,14 @@ export function ModerationAuditLog({ items }: ModerationAuditLogProps) {
             <div className="stack compact">
               <strong>{formatActionLabel(item.actionType)}</strong>
               <p className="muted">
-                {item.actorHandle ? `@${item.actorHandle}` : "Unknown admin"} •{" "}
+                {item.actorHandle ? (
+                  <Link className="inline-link" href={`/profiles/${encodeURIComponent(item.actorHandle)}`}>
+                    @{item.actorHandle}
+                  </Link>
+                ) : (
+                  "Unknown admin"
+                )}{" "}
+                •{" "}
                 {formatDate(item.createdAt)}
               </p>
             </div>
@@ -59,7 +67,16 @@ export function ModerationAuditLog({ items }: ModerationAuditLogProps) {
             ) : null}
           </div>
           <p className="muted">
-            {item.targetHandle ? `Target: @${item.targetHandle}` : "Target handle unavailable"}
+            {item.targetHandle ? (
+              <>
+                Target:{" "}
+                <Link className="inline-link" href={`/profiles/${encodeURIComponent(item.targetHandle)}`}>
+                  @{item.targetHandle}
+                </Link>
+              </>
+            ) : (
+              "Target handle unavailable"
+            )}
           </p>
           {formatMetadata(item.metadata) ? <p className="muted small-copy">{formatMetadata(item.metadata)}</p> : null}
           {item.note ? <p>{item.note}</p> : null}

@@ -12,6 +12,7 @@ import { HelpfulButton } from "../../components/helpful-button";
 import { MarkNotificationsReadButton } from "../../components/mark-notifications-read-button";
 import { NotificationActions } from "../../components/notification-actions";
 import { NotificationPreferencesForm } from "../../components/notification-preferences-form";
+import { ProfileHandleLink } from "../../components/profile-handle-link";
 import { getAuthenticatedProfileFromCookies } from "../lib/auth";
 
 function formatPageKind(pageKind: string) {
@@ -75,7 +76,7 @@ export default async function NotificationsPage() {
           <div className="stack compact">
             <div className="chip-row">
               <span className="pill">Notifications</span>
-              <span className="eyebrow">@{viewer.handle}</span>
+              <ProfileHandleLink className="eyebrow profile-handle-link" handle={viewer.handle} />
             </div>
             <h1>Keep up with the pages and people you care about</h1>
             <p className="muted">

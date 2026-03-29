@@ -2,6 +2,7 @@ import { getModerationAuditHistory, getModerationQueue } from "@human-layer/db";
 
 import { ModerationAuditLog } from "../../components/moderation-audit-log";
 import { ModerationQueue } from "../../components/moderation-queue";
+import { ProfileHandleLink } from "../../components/profile-handle-link";
 import { getAuthenticatedProfileFromCookies, isAdminProfile } from "../lib/auth";
 
 export default async function ModerationPage() {
@@ -49,7 +50,7 @@ export default async function ModerationPage() {
           <div className="stack compact">
             <div className="chip-row">
               <span className="pill">Moderation</span>
-              <span className="eyebrow">@{viewer.handle}</span>
+              <ProfileHandleLink className="eyebrow profile-handle-link" handle={viewer.handle} />
             </div>
             <h1>Review reports and hide abuse</h1>
             <p className="muted">
