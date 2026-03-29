@@ -13,7 +13,7 @@ import {
   orbLegacy,
   type IDKitResult
 } from "@worldcoin/idkit";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -53,8 +53,6 @@ export function WorldIdVerifyForm({
   worldIdConfig
 }: WorldIdVerifyFormProps) {
   const router = useRouter();
-  const finalizeUrlRef = useRef<string | null>(null);
-  const verifyFailureMessageRef = useRef<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [isCheckingExistingSession, setIsCheckingExistingSession] = useState(handoff);
   const [handle, setHandle] = useState("");
@@ -213,12 +211,11 @@ export function WorldIdVerifyForm({
       throw new Error(errorMessage);
     }
 
-    finalizeUrlRef.current = null;
     setRequestConfig(payload);
     setIsWidgetOpen(true);
   }
 
-  async function handleIdKitVerify(result: IDKitResult) {
+  async function handleIdKitSuccess(result: IDKitResult) {
     try {
       const payload =
         result.protocol_version === "3.0"
@@ -229,7 +226,7 @@ export function WorldIdVerifyForm({
               nullifierHash: undefined,
               signalHash: undefined
             };
-      finalizeUrlRef.current = await submitVerification({
+      const finalizeUrl = await submitVerification({
         worldIdResult: result,
         proof: payload.proof,
         merkleRoot: payload.merkleRoot,
@@ -238,11 +235,11 @@ export function WorldIdVerifyForm({
         verificationLevel,
         signal: worldIdConfig.signal
       });
-      verifyFailureMessageRef.current = null;
+      window.location.assign(finalizeUrl);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Verification failed.";
-      verifyFailureMessageRef.current = message;
       setStatusMessage(message);
+      setIsWidgetOpen(false);
       throw error;
     }
   }
@@ -494,28 +491,12 @@ export function WorldIdVerifyForm({
           app_id={requestConfig.appId as `app_${string}`}
           autoClose
           environment={requestConfig.environment}
-          handleVerify={handleIdKitVerify}
           onError={(errorCode) => {
-            if (verifyFailureMessageRef.current) {
-              setStatusMessage(verifyFailureMessageRef.current);
-              return;
-            }
-
             setStatusMessage(`World ID error: ${errorCode}`);
           }}
-          onOpenChange={(open) => {
-            setIsWidgetOpen(open);
-            if (!open) {
-              verifyFailureMessageRef.current = null;
-            }
-          }}
-          onSuccess={() => {
-            if (!finalizeUrlRef.current) {
-              setStatusMessage("Verification succeeded, but the browser could not finish sign-in.");
-              return;
-            }
-
-            window.location.assign(finalizeUrlRef.current);
+          onOpenChange={setIsWidgetOpen}
+          onSuccess={(result) => {
+            void handleIdKitSuccess(result);
           }}
           open={isWidgetOpen}
           preset={
