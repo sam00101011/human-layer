@@ -60,6 +60,9 @@ export default async function SupportPage(props: {
           <Link className="button" href="/verify">
             Open verification
           </Link>
+          <Link className="button secondary" href="/requested-integrations">
+            Request board
+          </Link>
           <Link className="button secondary" href="/integrations">
             Propose integration
           </Link>
@@ -87,6 +90,9 @@ export default async function SupportPage(props: {
           fastest path is a GitHub pull request. Docs-only proposals are welcome.
         </p>
         <div className="chip-row">
+          <Link className="button" href="/requested-integrations">
+            Open request board
+          </Link>
           <Link className="button secondary" href="/integrations">
             Open integration guide
           </Link>

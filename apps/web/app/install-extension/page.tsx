@@ -60,6 +60,7 @@ export default async function InstallExtensionPage(props: {
           <li>Verified-human context directly on supported websites.</li>
           <li>Post takes, bookmark pages, follow people and topics, and vote helpful without leaving the page.</li>
           <li>Quick access to your Human Layer graph while browsing GitHub, YouTube, Spotify, docs, and more.</li>
+          <li>If a website is missing, you can request it publicly from the integration board.</li>
         </ul>
       </section>
 
@@ -74,6 +75,9 @@ export default async function InstallExtensionPage(props: {
           </Link>
           <Link className="button secondary" href="/">
             Go to Discover
+          </Link>
+          <Link className="button secondary" href="/requested-integrations">
+            Request a new integration
           </Link>
          <Link
            className="button secondary"

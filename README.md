@@ -43,6 +43,11 @@ Deployment and production setup:
 - `apps/extension/.env.production.example`
 - `apps/extension/.env.staging.example`
 
+Public contribution paths:
+- request board: `/requested-integrations`
+- GitHub issue intake: `.github/ISSUE_TEMPLATE/integration-request.yml`
+- PR-based integration proposals: `INTEGRATION-CONTRIBUTING.md`
+
 Operational workflows:
 - `.github/workflows/production-guardrails.yml` runs the production uptime guardrail hourly
 - `.github/workflows/staging-validation.yml` validates any preview URL with uptime and overlay smoke checks

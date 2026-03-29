@@ -106,7 +106,7 @@ export default async function HomePage(props: {
           </div>
         </div>
 
-        <form action="/" className="discovery-search">
+        <form action="/search" className="discovery-search">
           <label className="field">
             <span className="helper">Search pages, people, takes, and themes</span>
             <div className="discovery-search-row">
@@ -121,7 +121,7 @@ export default async function HomePage(props: {
                 Search
               </button>
               {query ? (
-                <Link className="button secondary subtle" href="/">
+                <Link className="button secondary subtle" href="/search">
                   Clear
                 </Link>
               ) : null}
@@ -132,7 +132,7 @@ export default async function HomePage(props: {
           <div className="chip-row">
             <span className="muted small-copy">Try:</span>
             {featuredTopics.map((topic) => (
-              <Link className="chip" href={`/?q=${topic}`} key={topic}>
+              <Link className="chip" href={`/search?q=${topic}`} key={topic}>
                 {getInterestTagLabel(topic)}
               </Link>
             ))}
@@ -153,7 +153,7 @@ export default async function HomePage(props: {
               {searchResults.relatedQueries.map((suggestion) => (
                 <Link
                   className="chip"
-                  href={`/?q=${encodeURIComponent(suggestion.query)}`}
+                  href={`/search?q=${encodeURIComponent(suggestion.query)}`}
                   key={suggestion.query}
                 >
                   {suggestion.label}
@@ -167,6 +167,11 @@ export default async function HomePage(props: {
             <p className="muted">No discovery results yet. Try another page title, handle, host, or keyword.</p>
           ) : (
             <div className="stack">
+              <div className="action-row">
+                <Link className="button secondary subtle" href={`/search?q=${encodeURIComponent(query)}`}>
+                  Open full search page
+                </Link>
+              </div>
               {searchResults.pages.length > 0 ? (
                 <div className="stack">
                   <span className="eyebrow">Pages</span>
