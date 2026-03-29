@@ -427,10 +427,22 @@ input[placeholder="builder_signal"] {
 }
 
 .top-nav-icon-link {
+  position: relative;
   justify-content: center;
   min-width: 34px;
   min-height: 34px;
   background: var(--bg);
+}
+
+.top-nav-icon-dot {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #D10F2F;
+  box-shadow: 0 0 0 2px var(--card);
 }
 
 .top-nav-profile-link {

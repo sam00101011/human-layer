@@ -32,8 +32,6 @@ type DemoConversationPreview = {
   peerHandle: string;
   createdAt: string;
   preview: string;
-  pageTitle: string;
-  pageHost: string;
 };
 
 function buildDemoMessagingState(viewerHandle: string | null) {
@@ -54,27 +52,21 @@ function buildDemoMessagingState(viewerHandle: string | null) {
       peerHandle: demoHandles[0] ?? "maya_rivera",
       createdAt: new Date(now - 1000 * 60 * 18).toISOString(),
       preview:
-        "I just left a take on the repo page. The product is strong, but the onboarding copy still hides the wallet magic a bit too much.",
-      pageTitle: "human-layer repo",
-      pageHost: "github.com"
+        "I just left a take on the repo. The product is strong, but the onboarding copy still hides the wallet magic a bit too much."
     },
     {
       id: "demo-conversation-2",
       peerHandle: demoHandles[1] ?? "kenji_ito",
       createdAt: new Date(now - 1000 * 60 * 42).toISOString(),
       preview:
-        "The YouTube angle is compelling. Timestamped takes would make the extension feel instantly different from ordinary comments.",
-      pageTitle: "YouTube product walkthrough",
-      pageHost: "youtube.com"
+        "The YouTube angle is compelling. Timestamped takes would make the extension feel instantly different from ordinary comments."
     },
     {
       id: "demo-conversation-3",
       peerHandle: demoHandles[2] ?? "clara_singh",
       createdAt: new Date(now - 1000 * 60 * 95).toISOString(),
       preview:
-        "I bookmarked the Hugging Face page after your note. The human summary helped me decide faster than the model card alone.",
-      pageTitle: "Hugging Face model page",
-      pageHost: "huggingface.co"
+        "I bookmarked the Hugging Face page after your note. The human summary helped me decide faster than the model card alone."
     }
   ];
 
@@ -95,7 +87,7 @@ function buildDemoMessagingState(viewerHandle: string | null) {
       pageCanonicalUrl: "https://github.com/vercel/next.js",
       pageHost: "github.com",
       demo: true,
-      summary: "Demo request: this person wants to compare notes on the repo discussion."
+      summary: "Wants to compare notes on the repo discussion and swap quick product feedback."
     },
     {
       id: "demo-incoming-2",
@@ -113,7 +105,7 @@ function buildDemoMessagingState(viewerHandle: string | null) {
       pageCanonicalUrl: "https://chromewebstore.google.com",
       pageHost: "chromewebstore.google.com",
       demo: true,
-      summary: "Demo request: this person wants to talk about whether the extension pitch is clear enough."
+      summary: "Wants to talk about whether the extension pitch is clear enough for first-time users."
     }
   ];
 
@@ -134,7 +126,7 @@ function buildDemoMessagingState(viewerHandle: string | null) {
       pageCanonicalUrl: "https://open.spotify.com",
       pageHost: "open.spotify.com",
       demo: true,
-      summary: "Demo request: you asked this person to open a secure chat about the media-layer experience."
+      summary: "You asked this person to open a secure chat about the media-layer experience."
     }
   ];
 
@@ -157,7 +149,6 @@ function MessageList({ items, emptyCopy, incoming = false }: MessageListProps) {
           <div className="section-header">
             <div className="chip-row">
               <span className="trust-badge">{item.status}</span>
-              {item.demo ? <span className="trust-badge soft">Demo</span> : null}
               <ProfileHandleLink handle={item.peerHandle} />
             </div>
             <span className="muted small-copy">{formatDateTime(item.createdAt)}</span>
@@ -168,7 +159,7 @@ function MessageList({ items, emptyCopy, incoming = false }: MessageListProps) {
                 ? "A verified human wants to open an XMTP chat with you."
                 : "You asked to open an XMTP chat with this verified human.")}
           </p>
-          {item.pageTitle ? (
+          {item.pageTitle && !item.demo ? (
             <div className="wallet-meta-card">
               <span className="muted small-copy">Context</span>
               <strong>{item.pageTitle}</strong>
@@ -186,11 +177,7 @@ function MessageList({ items, emptyCopy, incoming = false }: MessageListProps) {
               <code>{item.peerInboxId}</code>
             </div>
           ) : null}
-          {incoming && !item.demo ? (
-            <MessageRequestActions requestId={item.id} />
-          ) : item.demo ? (
-            <span className="muted small-copy">Preview only for the demo build.</span>
-          ) : null}
+          {incoming && !item.demo ? <MessageRequestActions requestId={item.id} /> : null}
         </article>
       ))}
     </div>
@@ -231,24 +218,17 @@ export default async function MessagesPage() {
       <section className="card stack">
         <div className="section-header">
           <h2>Recent conversations</h2>
-          <span className="muted">Demo previews so the inbox feels alive during the hackathon.</span>
         </div>
         <div className="stack compact">
           {demoMessaging.conversations.map((conversation) => (
             <article className="comment-card interactive stack" key={conversation.id}>
               <div className="section-header">
                 <div className="chip-row">
-                  <span className="trust-badge soft">Demo</span>
                   <ProfileHandleLink handle={conversation.peerHandle} />
                 </div>
                 <span className="muted small-copy">{formatDateTime(conversation.createdAt)}</span>
               </div>
               <p>{conversation.preview}</p>
-              <div className="wallet-meta-card">
-                <span className="muted small-copy">Context</span>
-                <strong>{conversation.pageTitle}</strong>
-                <span className="muted">{conversation.pageHost}</span>
-              </div>
             </article>
           ))}
         </div>

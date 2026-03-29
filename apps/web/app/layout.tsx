@@ -74,6 +74,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                         href="/messages"
                       >
                         <MessageCircle aria-hidden="true" size={14} strokeWidth={2} />
+                        <span aria-hidden="true" className="top-nav-icon-dot" />
                       </Link>
                       <Link
                         aria-label="Open wallet"
