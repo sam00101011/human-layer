@@ -34,6 +34,7 @@ export default defineContentScript({
     "https://www.youtube.com/*",
     "https://youtube.com/*",
     "https://youtu.be/*",
+    "https://open.spotify.com/*",
     "https://stackoverflow.com/*",
     "https://*.stackexchange.com/*",
     "https://serverfault.com/*",

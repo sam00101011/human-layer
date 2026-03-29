@@ -1,4 +1,4 @@
-import { hasProfileSavedPage } from "@human-layer/db";
+import { getPageSocialProof, hasProfileSavedPage } from "@human-layer/db";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getAuthenticatedProfileFromRequest, toViewer } from "../../../lib/auth";
@@ -29,8 +29,12 @@ export async function GET(request: NextRequest) {
     const viewer = await getAuthenticatedProfileFromRequest(request);
     const lookup = await lookupPageByUrl(rawUrl, undefined, viewer?.id);
 
+    const socialProof =
+      viewer && lookup.page ? await getPageSocialProof({ pageId: lookup.page.id, profileId: viewer.id }) : null;
+
     return NextResponse.json({
       ...lookup,
+      socialProof,
       savedByViewer:
         viewer && lookup.page ? await hasProfileSavedPage({ pageId: lookup.page.id, profileId: viewer.id }) : false,
       viewer: toViewer(viewer)

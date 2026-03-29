@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { buildPageContextSummary } from "@human-layer/core";
-import { findPageById, getPageThreadSnapshot } from "@human-layer/db";
+import { buildMediaMomentUrl, buildPageContextSummary, formatMediaTimestamp, type PageKind } from "@human-layer/core";
+import { findPageById, getPageSocialProof, getPageThreadSnapshot } from "@human-layer/db";
 import { notFound } from "next/navigation";
 
 import { HelpfulButton } from "../../../components/helpful-button";
@@ -21,6 +21,34 @@ function getReputationBadgeClass(level: string | undefined) {
   return `reputation-badge reputation-badge--${level}`;
 }
 
+function renderMediaMomentLink(params: {
+  canonicalUrl: string;
+  pageKind: PageKind;
+  mediaTimestampSeconds?: number | null;
+}) {
+  if (params.mediaTimestampSeconds == null) return null;
+
+  const url = buildMediaMomentUrl(
+    {
+      canonicalUrl: params.canonicalUrl,
+      pageKind: params.pageKind
+    },
+    params.mediaTimestampSeconds
+  );
+
+  const label = `Highlight ${formatMediaTimestamp(params.mediaTimestampSeconds)}`;
+
+  if (!url) {
+    return <span className="trust-badge">{label}</span>;
+  }
+
+  return (
+    <Link className="inline-link" href={url} rel="noreferrer" target="_blank">
+      {label}
+    </Link>
+  );
+}
+
 export default async function HumanLayerPage(props: {
   params: Promise<{ pageId: string }>;
 }) {
@@ -33,8 +61,10 @@ export default async function HumanLayerPage(props: {
   }
 
   const thread = await getPageThreadSnapshot(page.id, viewer?.id);
+  const socialProof = viewer ? await getPageSocialProof({ pageId: page.id, profileId: viewer.id }) : null;
   const pageContext = buildPageContextSummary({ page, thread });
   const verdictTotal = Object.values(thread.verdictCounts).reduce((sum, count) => sum + count, 0);
+  const highlightedMoments = thread.recentComments.filter((comment) => comment.mediaTimestampSeconds != null).slice(0, 4);
 
   return (
     <div className="page-shell stack">
@@ -88,6 +118,18 @@ export default async function HumanLayerPage(props: {
             <span className="muted">Helpful votes on top take</span>
           </div>
         </div>
+
+        {socialProof && socialProof.followedBookmarkCount > 0 ? (
+          <div className="stack compact">
+            <div className="chip-row">
+              <span className="trust-badge">People you trust bookmarked this</span>
+            </div>
+            <p className="muted">
+              {socialProof.followedBookmarkCount} {socialProof.followedBookmarkCount === 1 ? "person" : "people"} you follow saved this page
+              {socialProof.followedBookmarkHandles.length > 0 ? `: @${socialProof.followedBookmarkHandles.join(", @")}` : "."}
+            </p>
+          </div>
+        ) : null}
       </section>
 
       <section className="card stack">
@@ -96,6 +138,20 @@ export default async function HumanLayerPage(props: {
           <span className="muted">A faster read on what verified humans are noticing here.</span>
         </div>
         <p className="muted">{pageContext.summary}</p>
+        {pageContext.surfaceLens ? (
+          <div className="stack compact">
+            <div className="chip-row">
+              <span className="trust-badge">{pageContext.surfaceLens.label}</span>
+            </div>
+            <strong>{pageContext.surfaceLens.title}</strong>
+            <p className="muted">{pageContext.surfaceLens.explanation}</p>
+            <ul className="signal-list">
+              {pageContext.surfaceLens.prompts.map((prompt) => (
+                <li key={prompt}>{prompt}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         <ul className="signal-list">
           {pageContext.whyItMatters.map((reason) => (
             <li key={reason}>{reason}</li>
@@ -113,6 +169,11 @@ export default async function HumanLayerPage(props: {
             <div className="comment-meta">
               <div className="chip-row">
                 <span className="trust-badge">Verified take</span>
+                {renderMediaMomentLink({
+                  canonicalUrl: page.canonicalUrl,
+                  pageKind: page.pageKind,
+                  mediaTimestampSeconds: thread.topHumanTake.mediaTimestampSeconds
+                })}
                 {thread.topHumanTake.reputation ? (
                   <span className={getReputationBadgeClass(thread.topHumanTake.reputation.level)}>
                     {thread.topHumanTake.reputation.label}
@@ -145,6 +206,35 @@ export default async function HumanLayerPage(props: {
         )}
       </section>
 
+      {highlightedMoments.length > 0 ? (
+        <section className="card stack">
+          <div className="section-header">
+            <h2>Highlighted moments</h2>
+            <span className="muted">Timestamped verified takes for this media page.</span>
+          </div>
+          {highlightedMoments.map((comment) => (
+            <article className="stack comment-card" key={comment.commentId}>
+              <div className="comment-meta">
+                <div className="chip-row">
+                  {renderMediaMomentLink({
+                    canonicalUrl: page.canonicalUrl,
+                    pageKind: page.pageKind,
+                    mediaTimestampSeconds: comment.mediaTimestampSeconds
+                  })}
+                  <Link className="inline-link" href={`/profiles/${comment.profileHandle}`}>
+                    @{comment.profileHandle}
+                  </Link>
+                </div>
+                <span className="muted">
+                  Helpful {comment.helpfulCount} • {formatDate(comment.createdAt)}
+                </span>
+              </div>
+              <p>{comment.body}</p>
+            </article>
+          ))}
+        </section>
+      ) : null}
+
       <section className="card stack">
         <div className="section-header">
           <h2>Verdicts</h2>
@@ -173,6 +263,11 @@ export default async function HumanLayerPage(props: {
               <div className="comment-meta">
                 <div className="chip-row">
                   <span className="trust-badge">Verified take</span>
+                  {renderMediaMomentLink({
+                    canonicalUrl: page.canonicalUrl,
+                    pageKind: page.pageKind,
+                    mediaTimestampSeconds: comment.mediaTimestampSeconds
+                  })}
                   {comment.reputation ? (
                     <span className={getReputationBadgeClass(comment.reputation.level)}>
                       {comment.reputation.label}

@@ -131,6 +131,7 @@ export const comments = pgTable("comments", {
     .notNull()
     .references(() => profiles.id, { onDelete: "cascade" }),
   body: text("body").notNull(),
+  mediaTimestampSeconds: integer("media_timestamp_seconds"),
   hidden: boolean("hidden").default(false).notNull(),
   reasonCode: text("reason_code"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()

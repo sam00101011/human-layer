@@ -1,3 +1,4 @@
+import { isSpotifyPageKind } from "./media";
 import { type InterestTag, type PageSummary, type ThreadSnapshot, type Verdict } from "./types";
 
 export type PageContextSummary = {
@@ -5,6 +6,12 @@ export type PageContextSummary = {
   dominantVerdict: Verdict | null;
   summary: string;
   whyItMatters: string[];
+  surfaceLens: {
+    label: string;
+    title: string;
+    explanation: string;
+    prompts: readonly string[];
+  } | null;
 };
 
 function truncate(value: string, maxLength: number) {
@@ -98,6 +105,10 @@ function inferTagsFromPage(page: Pick<PageSummary, "pageKind" | "host" | "title"
     pushTags(set, ["ai"]);
   }
 
+  if (page.pageKind === "youtube_video" || isSpotifyPageKind(page.pageKind)) {
+    pushTags(set, ["media"]);
+  }
+
   if (["product_hunt_product", "product_page", "showcase_page", "event_page"].includes(page.pageKind)) {
     pushTags(set, ["startups"]);
   }
@@ -117,6 +128,139 @@ function getDominantVerdict(thread: ThreadSnapshot): Verdict | null {
 
 function formatTagList(tags: InterestTag[]) {
   return tags.map((tag) => tag.replace(/_/g, " ")).join(", ");
+}
+
+function getSurfaceLens(page: Pick<PageSummary, "pageKind" | "host" | "title">) {
+  if (page.pageKind === "chrome_web_store_item") {
+    return {
+      label: "Install signal",
+      title: "Humans add the missing install reality check.",
+      explanation:
+        "This is where verified builders can say whether the extension is actually worth installing, safe to trust, and better than the alternatives.",
+      prompts: [
+        "Worth installing for a real workflow?",
+        "Any privacy, permission, or performance red flags?",
+        "Is there a better alternative people should consider first?"
+      ]
+    } as const;
+  }
+
+  if (
+    page.pageKind === "marketplace_item" &&
+    (page.host === "marketplace.visualstudio.com" || page.host === "visualstudiomarketplace.com")
+  ) {
+    return {
+      label: "Workflow signal",
+      title: "Humans can explain whether this earns a slot in your editor.",
+      explanation:
+        "Marketplace pages rarely tell you how an extension feels after a week of real use. Verified takes can fill in that gap fast.",
+      prompts: [
+        "Does it improve daily workflow or just look promising?",
+        "Any setup, telemetry, or performance gotchas?",
+        "Who is this genuinely best for?"
+      ]
+    } as const;
+  }
+
+  if (page.pageKind === "qa_question" && page.host.includes("stack")) {
+    return {
+      label: "Freshness signal",
+      title: "Humans can say whether the accepted answer still holds.",
+      explanation:
+        "Old answers can look authoritative long after the ecosystem moves on. Verified humans can mark what still works, what changed, and what to trust now.",
+      prompts: [
+        "Is the top answer still correct for current versions?",
+        "What caveat or safer fix is missing?",
+        "Which answer should people trust today?"
+      ]
+    } as const;
+  }
+
+  if (page.pageKind === "youtube_video") {
+    return {
+      label: "Time-worth signal",
+      title: "Humans can save people from low-signal tutorials and demos.",
+      explanation:
+        "Video pages need more than likes. Verified takes can tell people whether the content is current, honest, and worth their attention.",
+      prompts: [
+        "Worth watching end-to-end or skimming?",
+        "Which section or timestamp actually matters?",
+        "Is the demo real, current, and reproducible?"
+      ]
+    } as const;
+  }
+
+  if (page.pageKind === "spotify_track") {
+    return {
+      label: "Listening signal",
+      title: "Humans can tell you whether this track actually sticks.",
+      explanation:
+        "Stream counts do not tell you whether a track holds up. Verified listeners can add fit, context, and who this is really for.",
+      prompts: [
+        "Does it actually earn repeat listens?",
+        "Who is this track best for or adjacent to?",
+        "Is this the standout or should people start elsewhere?"
+      ]
+    } as const;
+  }
+
+  if (page.pageKind === "spotify_album" || page.pageKind === "spotify_playlist") {
+    return {
+      label: "Taste signal",
+      title: "Humans can explain why this is worth saving, not just streaming.",
+      explanation:
+        "Albums and playlists are discovery surfaces. Verified listeners can tell you whether this is coherent, skipless, and actually worth adding to your graph.",
+      prompts: [
+        "Is this coherent start-to-finish or mostly filler?",
+        "Which tracks or transitions actually carry it?",
+        "What kind of listener or context is this best for?"
+      ]
+    } as const;
+  }
+
+  if (page.pageKind === "spotify_episode" || page.pageKind === "spotify_show") {
+    return {
+      label: "Listen-worth signal",
+      title: "Humans can surface the moments and takeaways worth hearing.",
+      explanation:
+        "Podcast pages need more than a title and description. Verified listeners can point to the moment that matters and whether the conversation is actually worth your time.",
+      prompts: [
+        "Is this worth the full listen or just one segment?",
+        "What moment or timestamp is the key takeaway?",
+        "Was the conversation insightful, current, and honest?"
+      ]
+    } as const;
+  }
+
+  if (page.pageKind === "github_release") {
+    return {
+      label: "Upgrade signal",
+      title: "Humans can explain whether this release is safe to adopt.",
+      explanation:
+        "Release notes rarely tell the whole migration story. Verified humans can surface upgrade risk, breaking changes, and rollout advice.",
+      prompts: [
+        "Safe to upgrade right now?",
+        "What breaking changes matter most?",
+        "Any migration or rollback advice people should know?"
+      ]
+    } as const;
+  }
+
+  if (["hugging_face_model", "hugging_face_dataset", "hugging_face_space"].includes(page.pageKind)) {
+    return {
+      label: "Deployment signal",
+      title: "Humans can add the production reality behind the model card.",
+      explanation:
+        "Model pages show benchmarks and demos. Verified builders can explain how the model behaves in practice, what it costs, and what caveats matter.",
+      prompts: [
+        "Does it work outside the demo or benchmark?",
+        "What cost, latency, or license caveats matter?",
+        "What prompt, eval, or deployment setup changes the outcome?"
+      ]
+    } as const;
+  }
+
+  return null;
 }
 
 export function inferPageInterestTags(params: {
@@ -151,6 +295,7 @@ export function buildPageContextSummary(params: {
   const totalVerdicts = Object.values(params.thread.verdictCounts).reduce((sum, count) => sum + count, 0);
   const verifiedTakeCount = params.thread.recentComments.length;
   const usefulCount = params.thread.verdictCounts.useful;
+  const surfaceLens = getSurfaceLens(params.page);
 
   let summary = "No verified signal yet. The first useful take here will set the tone.";
 
@@ -195,6 +340,7 @@ export function buildPageContextSummary(params: {
     tags,
     dominantVerdict,
     summary,
-    whyItMatters
+    whyItMatters,
+    surfaceLens
   };
 }

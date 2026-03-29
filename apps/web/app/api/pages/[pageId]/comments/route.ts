@@ -31,10 +31,23 @@ export async function POST(
     return NextResponse.json({ error: "comment body is required" }, { status: 400 });
   }
 
+  const mediaTimestampSeconds = body && "mediaTimestampSeconds" in body ? (body as { mediaTimestampSeconds?: unknown }).mediaTimestampSeconds : undefined;
+  if (
+    mediaTimestampSeconds !== undefined &&
+    mediaTimestampSeconds !== null &&
+    (typeof mediaTimestampSeconds !== "number" ||
+      !Number.isInteger(mediaTimestampSeconds) ||
+      mediaTimestampSeconds < 0 ||
+      mediaTimestampSeconds > 43200)
+  ) {
+    return NextResponse.json({ error: "media timestamp must be a whole number of seconds" }, { status: 400 });
+  }
+
   await createCommentForPage({
     pageId,
     profileId: viewer.id,
-    body: commentBody
+    body: commentBody,
+    mediaTimestampSeconds: typeof mediaTimestampSeconds === "number" ? mediaTimestampSeconds : null
   });
 
   void captureAnalyticsEvent({
@@ -44,7 +57,8 @@ export async function POST(
       pageId,
       pageKind: page.pageKind,
       host: page.host,
-      bodyLength: commentBody.length
+      bodyLength: commentBody.length,
+      hasMediaTimestamp: typeof mediaTimestampSeconds === "number"
     }
   });
 

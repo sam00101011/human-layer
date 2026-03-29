@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   lookupPageByUrl: vi.fn(),
+  getPageSocialProof: vi.fn(),
   hasProfileSavedPage: vi.fn(),
   getAuthenticatedProfileFromRequest: vi.fn()
 }));
@@ -12,6 +13,7 @@ vi.mock("../../../lib/page-lookup", () => ({
 }));
 
 vi.mock("@human-layer/db", () => ({
+  getPageSocialProof: mocks.getPageSocialProof,
   hasProfileSavedPage: mocks.hasProfileSavedPage
 }));
 
@@ -29,6 +31,10 @@ import { GET } from "./route";
 describe("GET /api/pages/lookup", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.getPageSocialProof.mockResolvedValue({
+      followedBookmarkCount: 0,
+      followedBookmarkHandles: []
+    });
     mocks.hasProfileSavedPage.mockResolvedValue(false);
   });
 
@@ -68,6 +74,10 @@ describe("GET /api/pages/lookup", () => {
       id: "profile-1",
       handle: "demo_builder"
     });
+    mocks.getPageSocialProof.mockResolvedValue({
+      followedBookmarkCount: 2,
+      followedBookmarkHandles: ["friend_one", "friend_two"]
+    });
     mocks.hasProfileSavedPage.mockResolvedValue(true);
 
     const response = await GET(
@@ -97,6 +107,10 @@ describe("GET /api/pages/lookup", () => {
         },
         topHumanTake: null,
         recentComments: []
+      },
+      socialProof: {
+        followedBookmarkCount: 2,
+        followedBookmarkHandles: ["friend_one", "friend_two"]
       },
       savedByViewer: true,
       viewer: {

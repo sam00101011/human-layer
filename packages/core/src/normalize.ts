@@ -419,6 +419,43 @@ function normalizeYouTube(url: URL): NormalizedPageCandidate | null {
   return null;
 }
 
+function normalizeSpotify(url: URL): NormalizedPageCandidate | null {
+  const host = normalizeHost(url);
+  if (host !== "open.spotify.com") return null;
+
+  let segments = splitPath(url);
+  if (segments[0]?.startsWith("intl-")) {
+    segments = segments.slice(1);
+  }
+
+  if (segments.length < 2) return null;
+
+  const [kind, resourceId] = segments;
+  if (!resourceId) return null;
+
+  if (kind === "track") {
+    return buildExternalCandidate("spotify_track", host, `/track/${resourceId}`, `Spotify track ${resourceId}`);
+  }
+
+  if (kind === "album") {
+    return buildExternalCandidate("spotify_album", host, `/album/${resourceId}`, `Spotify album ${resourceId}`);
+  }
+
+  if (kind === "playlist") {
+    return buildExternalCandidate("spotify_playlist", host, `/playlist/${resourceId}`, `Spotify playlist ${resourceId}`);
+  }
+
+  if (kind === "episode") {
+    return buildExternalCandidate("spotify_episode", host, `/episode/${resourceId}`, `Spotify episode ${resourceId}`);
+  }
+
+  if (kind === "show") {
+    return buildExternalCandidate("spotify_show", host, `/show/${resourceId}`, `Spotify show ${resourceId}`);
+  }
+
+  return null;
+}
+
 function normalizeQaQuestion(url: URL): NormalizedPageCandidate | null {
   const host = normalizeHost(url);
   const segments = splitPath(url);
@@ -1080,6 +1117,7 @@ export function normalizeUrl(rawUrl: string): NormalizedPageCandidate | null {
   if (host === "pypi.org") return normalizePypi(url);
   if (host === "www.reddit.com" || host === "reddit.com" || host === "old.reddit.com") return normalizeReddit(url);
   if (host === "www.youtube.com" || host === "youtube.com" || host === "youtu.be") return normalizeYouTube(url);
+  if (host === "open.spotify.com") return normalizeSpotify(url);
   if (isStackExchangeHost(host)) return normalizeQaQuestion(url);
   if (
     host === "arxiv.org" ||

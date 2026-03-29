@@ -8,6 +8,7 @@ const baseProps = {
   bookmarks: [],
   blockedProfileIds: [],
   draftComment: "",
+  draftTimestamp: "",
   followedProfileIds: [],
   followedTopics: [],
   helpfulCommentIds: [],
@@ -21,6 +22,7 @@ const baseProps = {
   notificationPreferences: null,
   onBlockProfile: vi.fn(),
   onDraftCommentChange: vi.fn(),
+  onDraftTimestampChange: vi.fn(),
   onFollow: vi.fn(),
   onFollowTopic: vi.fn(),
   onHelpful: vi.fn(),
@@ -170,6 +172,100 @@ describe("OverlayView", () => {
     expect(screen.getByText("Recommended verified takes")).toBeTruthy();
     expect(screen.getByText("Most helpful so far")).toBeTruthy();
    expect(screen.getByText("Post take")).toBeTruthy();
+  });
+
+  it("shows the optional highlight moment input on media pages", () => {
+    const onDraftTimestampChange = vi.fn();
+
+    renderOverlay(
+      {
+        supported: true,
+        state: "active",
+        page: {
+          id: "1",
+          pageKind: "youtube_video",
+          canonicalUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+          canonicalKey: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+          host: "www.youtube.com",
+          title: "Video"
+        },
+        thread: {
+          verdictCounts: {
+            useful: 1,
+            misleading: 0,
+            outdated: 0,
+            scam: 0
+          },
+          topHumanTake: null,
+          recentComments: []
+        },
+        viewer: {
+          profileId: "viewer-1",
+          handle: "viewer"
+        }
+      },
+      { onDraftTimestampChange }
+    );
+
+    fireEvent.change(screen.getByPlaceholderText("1:23"), {
+      target: { value: "2:34" }
+    });
+
+    expect(onDraftTimestampChange).toHaveBeenCalledWith("2:34");
+  });
+
+  it("renders trust-bookmark social proof and timestamped highlights", () => {
+    renderOverlay({
+      supported: true,
+      state: "active",
+      page: {
+        id: "episode-1",
+        pageKind: "spotify_episode",
+        canonicalUrl: "https://open.spotify.com/episode/abcde",
+        canonicalKey: "https://open.spotify.com/episode/abcde",
+        host: "open.spotify.com",
+        title: "Episode"
+      },
+      thread: {
+        verdictCounts: {
+          useful: 2,
+          misleading: 0,
+          outdated: 0,
+          scam: 0
+        },
+        topHumanTake: {
+          commentId: "c1",
+          profileId: "profile-1",
+          profileHandle: "demo_builder",
+          body: "Start at the product teardown.",
+          helpfulCount: 4,
+          mediaTimestampSeconds: 83,
+          createdAt: "2026-03-28T00:00:00.000Z"
+        },
+        recentComments: [
+          {
+            commentId: "c1",
+            profileId: "profile-1",
+            profileHandle: "demo_builder",
+            body: "Start at the product teardown.",
+            helpfulCount: 4,
+            mediaTimestampSeconds: 83,
+            createdAt: "2026-03-28T00:00:00.000Z"
+          }
+        ]
+      },
+      socialProof: {
+        followedBookmarkCount: 2,
+        followedBookmarkHandles: ["friend_one", "friend_two"]
+      },
+      viewer: {
+        profileId: "viewer-1",
+        handle: "viewer"
+      }
+    });
+
+    expect(screen.getByText("People you trust bookmarked this")).toBeTruthy();
+    expect(screen.getAllByText("Highlight 1:23").length).toBeGreaterThan(0);
   });
 
   it("lets people mark a take as helpful directly from the overlay", () => {

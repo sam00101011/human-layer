@@ -182,6 +182,51 @@ export const SUPPORTED_DOMAIN_RULES: SupportedDomainRule[] = [
     rolloutStage: "phase_0"
   },
   {
+    id: "spotify-track",
+    enabled: true,
+    hosts: ["open.spotify.com"],
+    pageKind: "spotify_track",
+    matchStrategy: "path_prefix",
+    normalizer: "spotifyPage",
+    rolloutStage: "phase_0"
+  },
+  {
+    id: "spotify-album",
+    enabled: true,
+    hosts: ["open.spotify.com"],
+    pageKind: "spotify_album",
+    matchStrategy: "path_prefix",
+    normalizer: "spotifyPage",
+    rolloutStage: "phase_0"
+  },
+  {
+    id: "spotify-playlist",
+    enabled: true,
+    hosts: ["open.spotify.com"],
+    pageKind: "spotify_playlist",
+    matchStrategy: "path_prefix",
+    normalizer: "spotifyPage",
+    rolloutStage: "phase_0"
+  },
+  {
+    id: "spotify-episode",
+    enabled: true,
+    hosts: ["open.spotify.com"],
+    pageKind: "spotify_episode",
+    matchStrategy: "path_prefix",
+    normalizer: "spotifyPage",
+    rolloutStage: "phase_0"
+  },
+  {
+    id: "spotify-show",
+    enabled: true,
+    hosts: ["open.spotify.com"],
+    pageKind: "spotify_show",
+    matchStrategy: "path_prefix",
+    normalizer: "spotifyPage",
+    rolloutStage: "phase_0"
+  },
+  {
     id: "qa-question",
     enabled: true,
     hosts: [

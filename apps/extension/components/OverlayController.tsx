@@ -6,6 +6,7 @@ import {
   type ExtensionDashboardResponse,
   type InterestTag,
   type NotificationPreferences,
+  parseMediaTimestampInput,
   VERDICTS,
   type NormalizedPageCandidate,
   type PageLookupResponse,
@@ -75,6 +76,7 @@ export function OverlayController({
   );
   const [selectedVerdict, setSelectedVerdict] = useState<Verdict | null>(null);
   const [draftComment, setDraftComment] = useState("");
+  const [draftTimestamp, setDraftTimestamp] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -272,6 +274,7 @@ export function OverlayController({
     setHelpfulCommentIds([]);
     setHelpfulCountsByCommentId({});
     setHelpfulSubmittingCommentIds([]);
+    setDraftTimestamp("");
     setMutedCurrentPage(false);
     setMutedProfileIds([]);
     setBlockedProfileIds([]);
@@ -399,9 +402,21 @@ export function OverlayController({
   async function handleSubmitTake() {
     const trimmedComment = draftComment.trim();
     if (!lookup?.page) return;
+    const trimmedTimestamp = draftTimestamp.trim();
+    const parsedTimestamp = trimmedTimestamp ? parseMediaTimestampInput(trimmedTimestamp) : null;
 
     if (!selectedVerdict && !trimmedComment) {
       setStatusMessage("Choose a verdict or add a comment first.");
+      return;
+    }
+
+    if (trimmedTimestamp && parsedTimestamp == null) {
+      setStatusMessage("Use a timestamp like 1:23 or 01:02:03.");
+      return;
+    }
+
+    if (parsedTimestamp != null && !trimmedComment) {
+      setStatusMessage("Add a short note for the highlighted moment too.");
       return;
     }
 
@@ -427,13 +442,17 @@ export function OverlayController({
       if (trimmedComment) {
         const commentOk = await postJson(
           `${appUrl}/api/pages/${lookup.page.id}/comments`,
-          { body: trimmedComment },
+          {
+            body: trimmedComment,
+            mediaTimestampSeconds: parsedTimestamp
+          },
           authToken
         );
         if (!commentOk) return;
       }
 
       setDraftComment("");
+      setDraftTimestamp("");
       setSelectedVerdict(null);
       setStatusMessage("Your take is live.");
       await refreshLookup();
@@ -691,9 +710,11 @@ export function OverlayController({
       isSaved={saved}
       isSubmitting={isSubmitting}
       lookup={lookup}
+      draftTimestamp={draftTimestamp}
       mutedProfileIds={mutedProfileIds}
       notificationPreferences={notificationPreferences}
       onDraftCommentChange={setDraftComment}
+      onDraftTimestampChange={setDraftTimestamp}
       onFollow={handleFollow}
       onFollowTopic={handleFollowTopic}
       onHelpful={handleHelpfulComment}

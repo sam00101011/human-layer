@@ -165,6 +165,21 @@ describe("normalizeUrl", () => {
     );
   });
 
+  it("normalizes Spotify track, playlist, and episode pages", () => {
+    expect(normalizeUrl("https://open.spotify.com/track/12345?si=test")?.pageKind).toBe(
+      "spotify_track"
+    );
+    expect(normalizeUrl("https://open.spotify.com/playlist/67890")?.pageKind).toBe(
+      "spotify_playlist"
+    );
+    expect(normalizeUrl("https://open.spotify.com/episode/abcde?t=84")?.canonicalUrl).toBe(
+      "https://open.spotify.com/episode/abcde"
+    );
+    expect(normalizeUrl("https://open.spotify.com/intl-ja/show/show123")?.pageKind).toBe(
+      "spotify_show"
+    );
+  });
+
   it("normalizes Chrome Web Store and Figma Community resources", () => {
     expect(
       normalizeUrl("https://chromewebstore.google.com/detail/human-layer/abcdefghijklmnop")

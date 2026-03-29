@@ -121,7 +121,8 @@ describe("POST /api/pages/[pageId]/comments", () => {
     expect(mocks.createCommentForPage).toHaveBeenCalledWith({
       pageId: "page-1",
       profileId: "profile-1",
-      body: "Phase 0 verified path."
+      body: "Phase 0 verified path.",
+      mediaTimestampSeconds: null
     });
     expect(mocks.getPageThreadSnapshot).toHaveBeenCalledWith("page-1", "profile-1");
     expect(response.status).toBe(200);
@@ -154,6 +155,47 @@ describe("POST /api/pages/[pageId]/comments", () => {
         ]
       }
     });
+  });
+
+  it("accepts an optional media timestamp for highlighted takes", async () => {
+    mocks.getAuthenticatedProfileFromRequest.mockResolvedValue({
+      id: "profile-1",
+      handle: "demo_builder"
+    });
+    mocks.findPageById.mockResolvedValue({
+      id: "page-1"
+    });
+    mocks.getPageThreadSnapshot.mockResolvedValue({
+      verdictCounts: {
+        useful: 0,
+        misleading: 0,
+        outdated: 0,
+        scam: 0
+      },
+      topHumanTake: null,
+      recentComments: []
+    });
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/pages/page-1/comments", {
+        method: "POST",
+        body: JSON.stringify({
+          body: "Start here.",
+          mediaTimestampSeconds: 83
+        })
+      }),
+      {
+        params: Promise.resolve({ pageId: "page-1" })
+      }
+    );
+
+    expect(mocks.createCommentForPage).toHaveBeenCalledWith({
+      pageId: "page-1",
+      profileId: "profile-1",
+      body: "Start here.",
+      mediaTimestampSeconds: 83
+    });
+    expect(response.status).toBe(200);
   });
 
   it("rejects blocked viewers", async () => {

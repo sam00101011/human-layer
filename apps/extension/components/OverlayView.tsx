@@ -1,9 +1,12 @@
 import { useState, type CSSProperties, type ReactNode } from "react";
 import {
+  buildMediaMomentUrl,
   buildPageContextSummary,
   explainHumanTakeRecommendation,
+  formatMediaTimestamp,
   getCommentReportReasonOptions,
   getInterestTagLabel,
+  supportsMomentTakes,
   sortHumanTakes,
   type BookmarkedPagePreview,
   type CommentReportReasonCode,
@@ -11,6 +14,7 @@ import {
   type InterestTag,
   type NotificationPreferences,
   type NormalizedPageCandidate,
+  type PageKind,
   type PageLookupResponse,
   type Verdict
 } from "@human-layer/core";
@@ -22,6 +26,7 @@ type OverlayViewProps = {
   bookmarks: BookmarkedPagePreview[];
   blockedProfileIds: string[];
   draftComment: string;
+  draftTimestamp: string;
   followedProfileIds: string[];
   followedTopics: InterestTag[];
   helpfulCommentIds: string[];
@@ -35,6 +40,7 @@ type OverlayViewProps = {
   notificationPreferences: NotificationPreferences | null;
   onBlockProfile(profileId: string, profileHandle: string): void;
   onDraftCommentChange(value: string): void;
+  onDraftTimestampChange(value: string): void;
   onFollow(profileId: string): void;
   onFollowTopic(topic: InterestTag): void;
   onHelpful(commentId: string): void;
@@ -76,6 +82,8 @@ const textAreaCaptureProps = {
   onKeyUpCapture: stopOverlayEvent,
   onMouseDownCapture: stopOverlayEvent
 };
+
+const textInputCaptureProps = textAreaCaptureProps;
 
 function renderSurfaceShell(props: {
   action?: ReactNode;
@@ -150,8 +158,55 @@ function renderPageContext(lookup: PageLookupResponse) {
           ))}
         </div>
       ) : null}
+      {context.surfaceLens ? (
+        <div style={{ display: "grid", gap: 6 }}>
+          <div style={contextTagRowStyle}>
+            <span style={miniTrustChipStyle}>{context.surfaceLens.label}</span>
+          </div>
+          <strong style={{ fontSize: 13, lineHeight: 1.4 }}>{context.surfaceLens.title}</strong>
+          <span style={helperNoteStyle}>{context.surfaceLens.prompts[0]}</span>
+        </div>
+      ) : null}
+      {lookup.socialProof && lookup.socialProof.followedBookmarkCount > 0 ? (
+        <div style={{ display: "grid", gap: 4 }}>
+          <span style={miniTrustChipStyle}>People you trust bookmarked this</span>
+          <span style={helperNoteStyle}>
+            {lookup.socialProof.followedBookmarkCount} {lookup.socialProof.followedBookmarkCount === 1 ? "person" : "people"} you follow saved it
+            {lookup.socialProof.followedBookmarkHandles.length > 0
+              ? `: @${lookup.socialProof.followedBookmarkHandles.join(", @")}`
+              : "."}
+          </span>
+        </div>
+      ) : null}
       <p style={helperNoteStyle}>{context.summary}</p>
     </div>
+  );
+}
+
+function renderMediaMomentBadge(props: {
+  canonicalUrl: string;
+  comment: CommentProjection;
+  pageKind: PageKind;
+}) {
+  if (props.comment.mediaTimestampSeconds == null) return null;
+
+  const label = `Highlight ${formatMediaTimestamp(props.comment.mediaTimestampSeconds)}`;
+  const url = buildMediaMomentUrl(
+    {
+      canonicalUrl: props.canonicalUrl,
+      pageKind: props.pageKind
+    },
+    props.comment.mediaTimestampSeconds
+  );
+
+  if (!url) {
+    return <span style={miniTrustChipStyle}>{label}</span>;
+  }
+
+  return (
+    <a href={url} rel="noreferrer" style={timestampLinkStyle} target="_blank">
+      {label}
+    </a>
   );
 }
 
@@ -407,6 +462,18 @@ function renderComposer(props: OverlayViewProps, lookup: PageLookupResponse) {
         value={props.draftComment}
         {...textAreaCaptureProps}
       />
+      {supportsMomentTakes(lookup.page.pageKind) ? (
+        <div style={{ display: "grid", gap: 4 }}>
+          <span style={helperNoteStyle}>Optional highlight moment</span>
+          <input
+            onChange={(event) => props.onDraftTimestampChange(event.target.value)}
+            placeholder="1:23"
+            style={timestampInputStyle}
+            value={props.draftTimestamp}
+            {...textInputCaptureProps}
+          />
+        </div>
+      ) : null}
       <button
         disabled={isSubmitDisabled}
         onClick={props.onSubmitTake}
@@ -644,20 +711,22 @@ export function OverlayView(props: OverlayViewProps) {
   const rankedComments = getRankedOverlayComments(lookup, props.helpfulCountsByCommentId);
   const topTake = rankedComments[0] ?? null;
   const recommendedComments = rankedComments.slice(topTake ? 1 : 0);
+  const page = lookup.page;
   const pageContext = buildPageContextSummary({
-    page: lookup.page,
+    page,
     thread: lookup.thread
   });
   const suggestedTopics = pageContext.tags.slice(0, 4);
+  const highlightedMoments = rankedComments.filter((comment) => comment.mediaTimestampSeconds != null).slice(0, 3);
 
   return (
     <section data-state={lookup.state} style={panelStyle}>
       <div style={{ display: "grid", gap: 8 }}>
-        <button onClick={() => props.onOpenPage(lookup.page.id)} style={badgeButtonStyle} type="button">
+        <button onClick={() => props.onOpenPage(page.id)} style={badgeButtonStyle} type="button">
           Human Layer
         </button>
-        <strong>{lookup.page.title}</strong>
-        <span style={mutedStyle}>{lookup.page.pageKind}</span>
+        <strong>{page.title}</strong>
+        <span style={mutedStyle}>{page.pageKind}</span>
       </div>
 
       {lookup.state === "empty" ? (
@@ -680,6 +749,11 @@ export function OverlayView(props: OverlayViewProps) {
              <div style={{ display: "grid", gap: 6 }}>
                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                  <span style={miniTrustChipStyle}>Verified take</span>
+                  {renderMediaMomentBadge({
+                    canonicalUrl: page.canonicalUrl,
+                    comment: topTake,
+                    pageKind: page.pageKind
+                  })}
                   {topTake.reputation
                     ? renderReputationBadge(topTake.reputation.label)
                    : null}
@@ -733,6 +807,30 @@ export function OverlayView(props: OverlayViewProps) {
            <span style={sectionLabelStyle}>Verdicts</span>
            {renderVerdictCounts(lookup)}
          </div>
+         {supportsMomentTakes(page.pageKind) ? (
+           <div style={{ display: "grid", gap: 6 }}>
+             <span style={sectionLabelStyle}>Verified highlights</span>
+             {highlightedMoments.length === 0 ? (
+               <p style={helperNoteStyle}>No timestamped moments yet.</p>
+             ) : highlightedMoments.map((comment) => (
+               <div key={comment.commentId} style={commentStyle}>
+                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                   {renderMediaMomentBadge({
+                     canonicalUrl: page.canonicalUrl,
+                     comment,
+                     pageKind: page.pageKind
+                   })}
+                   {comment.reputation ? renderReputationBadge(comment.reputation.label) : null}
+                 </div>
+                 {renderProfileHandle({
+                   handle: comment.profileHandle,
+                   onOpenProfile: props.onOpenProfile
+                 })}
+                 <span style={mutedStyle}>{comment.body}</span>
+               </div>
+             ))}
+           </div>
+         ) : null}
          <div style={{ display: "grid", gap: 6 }}>
             <span style={sectionLabelStyle}>Recommended verified takes</span>
             {recommendedComments.length === 0 ? (
@@ -741,6 +839,11 @@ export function OverlayView(props: OverlayViewProps) {
              <div key={comment.commentId} style={commentStyle}>
                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                  <span style={miniTrustChipStyle}>Verified take</span>
+                 {renderMediaMomentBadge({
+                   canonicalUrl: page.canonicalUrl,
+                   comment,
+                   pageKind: page.pageKind
+                 })}
                  {comment.reputation ? renderReputationBadge(comment.reputation.label) : null}
                </div>
                 {renderRecommendationReasons(explainHumanTakeRecommendation(comment, rankedComments))}
@@ -859,6 +962,17 @@ const secondaryButtonStyle: CSSProperties = {
   padding: "9px 12px",
   fontSize: 13,
   fontWeight: 600
+};
+
+const timestampInputStyle: CSSProperties = {
+  width: "100%",
+  borderRadius: 10,
+  border: "1px solid rgba(255, 255, 255, 0.16)",
+  background: "rgba(15, 23, 42, 0.82)",
+  color: "#f8fafc",
+  fontSize: 13,
+  padding: "10px 12px",
+  outline: "none"
 };
 
 const buttonIconLabelStyle: CSSProperties = {
@@ -1011,6 +1125,11 @@ const recommendationChipStyle: CSSProperties = {
   color: "#ddd6fe",
   fontSize: 11,
   fontWeight: 700
+};
+
+const timestampLinkStyle: CSSProperties = {
+  ...miniTrustChipStyle,
+  textDecoration: "none"
 };
 
 const quoteStyle: CSSProperties = {

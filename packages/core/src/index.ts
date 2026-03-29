@@ -1,4 +1,5 @@
 export * from "./interests";
+export * from "./media";
 export * from "./normalize";
 export * from "./page-context";
 export * from "./reputation";

@@ -104,4 +104,103 @@ describe("buildPageContextSummary", () => {
     expect(summary.summary).toContain("verified humans");
     expect(summary.whyItMatters[0]).toContain("builders");
   });
+
+  it("adds site-specific guidance for high-value support surfaces", () => {
+    const chromeStore = buildPageContextSummary({
+      page: {
+        pageKind: "chrome_web_store_item",
+        host: "chromewebstore.google.com",
+        title: "Human Layer"
+      },
+      thread: {
+        verdictCounts: {
+          useful: 0,
+          misleading: 0,
+          outdated: 0,
+          scam: 0
+        },
+        topHumanTake: null,
+        recentComments: []
+      }
+    });
+
+    const stackOverflow = buildPageContextSummary({
+      page: {
+        pageKind: "qa_question",
+        host: "stackoverflow.com",
+        title: "How do I ship this?"
+      },
+      thread: {
+        verdictCounts: {
+          useful: 0,
+          misleading: 0,
+          outdated: 0,
+          scam: 0
+        },
+        topHumanTake: null,
+        recentComments: []
+      }
+    });
+
+    const githubRelease = buildPageContextSummary({
+      page: {
+        pageKind: "github_release",
+        host: "github.com",
+        title: "vercel/next.js release v16.0.0"
+      },
+      thread: {
+        verdictCounts: {
+          useful: 0,
+          misleading: 0,
+          outdated: 0,
+          scam: 0
+        },
+        topHumanTake: null,
+        recentComments: []
+      }
+    });
+
+    const huggingFace = buildPageContextSummary({
+      page: {
+        pageKind: "hugging_face_model",
+        host: "huggingface.co",
+        title: "Reasoning model"
+      },
+      thread: {
+        verdictCounts: {
+          useful: 0,
+          misleading: 0,
+          outdated: 0,
+          scam: 0
+        },
+        topHumanTake: null,
+        recentComments: []
+      }
+    });
+
+    const spotifyEpisode = buildPageContextSummary({
+      page: {
+        pageKind: "spotify_episode",
+        host: "open.spotify.com",
+        title: "Spotify episode"
+      },
+      thread: {
+        verdictCounts: {
+          useful: 0,
+          misleading: 0,
+          outdated: 0,
+          scam: 0
+        },
+        topHumanTake: null,
+        recentComments: []
+      }
+    });
+
+    expect(chromeStore.surfaceLens?.label).toBe("Install signal");
+    expect(stackOverflow.surfaceLens?.label).toBe("Freshness signal");
+    expect(githubRelease.surfaceLens?.label).toBe("Upgrade signal");
+    expect(huggingFace.surfaceLens?.label).toBe("Deployment signal");
+    expect(spotifyEpisode.surfaceLens?.label).toBe("Listen-worth signal");
+    expect(chromeStore.surfaceLens?.explanation).toContain("worth installing");
+  });
 });

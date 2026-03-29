@@ -19,6 +19,11 @@ export const PAGE_KINDS = [
   "pypi_package",
   "reddit_thread",
   "youtube_video",
+  "spotify_track",
+  "spotify_album",
+  "spotify_playlist",
+  "spotify_episode",
+  "spotify_show",
   "qa_question",
   "research_page",
   "product_page",
@@ -65,6 +70,11 @@ export const PHASE_0_PAGE_KINDS = [
   "pypi_package",
   "reddit_thread",
   "youtube_video",
+  "spotify_track",
+  "spotify_album",
+  "spotify_playlist",
+  "spotify_episode",
+  "spotify_show",
   "qa_question",
   "research_page",
   "product_page",
@@ -180,6 +190,7 @@ export type NormalizerName =
   | "pypiPackage"
   | "redditThread"
   | "youtubeVideo"
+  | "spotifyPage"
   | "qaQuestion"
   | "researchPage"
   | "productPage"
@@ -218,6 +229,7 @@ export type TopHumanTake = {
   profileHandle: string;
   body: string;
   helpfulCount: number;
+  mediaTimestampSeconds?: number | null;
   createdAt: string;
   reputation?: ContributorReputation | null;
 } | null;
@@ -309,11 +321,17 @@ export type PageSummary = {
 
 export type PageLookupState = "unsupported" | "empty" | "active";
 
+export type PageSocialProof = {
+  followedBookmarkCount: number;
+  followedBookmarkHandles: string[];
+};
+
 export type PageLookupResponse = {
   supported: boolean;
   state: PageLookupState;
   page: PageSummary | null;
   thread: ThreadSnapshot | null;
+  socialProof?: PageSocialProof | null;
   savedByViewer?: boolean;
   viewer?: ViewerSummary | null;
 };

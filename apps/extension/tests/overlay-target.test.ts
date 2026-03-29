@@ -37,6 +37,9 @@ describe("getOverlayTarget", () => {
     expect(getOverlayTarget("https://www.youtube.com/watch?v=dQw4w9WgXcQ")?.pageKind).toBe(
       "youtube_video"
     );
+    expect(getOverlayTarget("https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M")?.pageKind).toBe(
+      "spotify_playlist"
+    );
     expect(getOverlayTarget("https://chromewebstore.google.com/detail/human-layer/abcdefghijklmnop")?.pageKind).toBe(
       "chrome_web_store_item"
     );

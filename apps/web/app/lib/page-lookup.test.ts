@@ -132,4 +132,15 @@ describe("lookupPageByUrl", () => {
     expect(response.state).toBe("empty");
     expect(response.page?.pageKind).toBe("qa_question");
   });
+
+  it("returns empty for Spotify media pages", async () => {
+    const response = await lookupPageByUrl(
+      "https://open.spotify.com/episode/abcde?t=83",
+      createStore()
+    );
+
+    expect(response.supported).toBe(true);
+    expect(response.state).toBe("empty");
+    expect(response.page?.pageKind).toBe("spotify_episode");
+  });
 });

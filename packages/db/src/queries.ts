@@ -13,6 +13,7 @@ import {
   type ContributorReputationMetrics,
   type InterestTag,
   type NormalizedPageCandidate,
+  type PageSocialProof,
   type ProfileActivityItem,
   type ProfileSnapshot,
   pickTopHumanTake,
@@ -108,6 +109,8 @@ export type FollowGraphItem = {
   pageHost: string;
   reason: string;
 };
+
+export type PageSocialProofSummary = PageSocialProof;
 
 export type ModerationQueueItem = {
   reportId: string;
@@ -1250,6 +1253,7 @@ export async function getPageThreadSnapshot(
           profileId: profiles.id,
           profileHandle: profiles.handle,
           body: comments.body,
+          mediaTimestampSeconds: comments.mediaTimestampSeconds,
           createdAt: comments.createdAt
         })
         .from(comments)
@@ -1284,6 +1288,7 @@ export async function getPageThreadSnapshot(
           profileId: profiles.id,
           profileHandle: profiles.handle,
           body: comments.body,
+          mediaTimestampSeconds: comments.mediaTimestampSeconds,
           createdAt: comments.createdAt
         })
         .from(comments)
@@ -1315,6 +1320,7 @@ export async function getPageThreadSnapshot(
     profileHandle: comment.profileHandle,
     body: comment.body,
     helpfulCount: helpfulCountMap.get(comment.commentId) ?? 0,
+    mediaTimestampSeconds: comment.mediaTimestampSeconds,
     createdAt: comment.createdAt.toISOString(),
     reputation: reputationMap.get(comment.profileId) ?? defaultContributorReputation()
   }));
@@ -3173,6 +3179,7 @@ export async function createCommentForPage(params: {
   pageId: string;
   profileId: string;
   body: string;
+  mediaTimestampSeconds?: number | null;
 }): Promise<{
   id: string;
 }> {
@@ -3181,7 +3188,8 @@ export async function createCommentForPage(params: {
     .values({
       pageId: params.pageId,
       profileId: params.profileId,
-      body: params.body
+      body: params.body,
+      mediaTimestampSeconds: params.mediaTimestampSeconds ?? null
     })
     .returning({
       id: comments.id
@@ -3251,6 +3259,52 @@ export async function hasProfileSavedPage(params: {
   });
 
   return Boolean(row);
+}
+
+export async function getPageSocialProof(params: {
+  pageId: string;
+  profileId: string;
+}): Promise<PageSocialProofSummary> {
+  const rows = await db
+    .select({
+      profileId: profiles.id,
+      handle: profiles.handle
+    })
+    .from(saves)
+    .innerJoin(
+      follows,
+      and(eq(follows.followeeProfileId, saves.profileId), eq(follows.followerProfileId, params.profileId))
+    )
+    .innerJoin(profiles, eq(profiles.id, saves.profileId))
+    .leftJoin(
+      mutedProfiles,
+      and(eq(mutedProfiles.mutedProfileId, saves.profileId), eq(mutedProfiles.profileId, params.profileId))
+    )
+    .leftJoin(
+      blockedProfiles,
+      and(eq(blockedProfiles.blockedProfileId, saves.profileId), eq(blockedProfiles.profileId, params.profileId))
+    )
+    .where(
+      and(
+        eq(saves.pageId, params.pageId),
+        sql`${mutedProfiles.id} is null`,
+        sql`${blockedProfiles.id} is null`
+      )
+    );
+
+  const handles: string[] = [];
+  const seenProfileIds = new Set<string>();
+
+  for (const row of rows) {
+    if (seenProfileIds.has(row.profileId)) continue;
+    seenProfileIds.add(row.profileId);
+    handles.push(row.handle);
+  }
+
+  return {
+    followedBookmarkCount: seenProfileIds.size,
+    followedBookmarkHandles: handles.slice(0, 3)
+  };
 }
 
 export async function savePageForProfile(params: {
