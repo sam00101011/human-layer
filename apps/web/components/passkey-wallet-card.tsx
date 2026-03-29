@@ -159,11 +159,9 @@ export function PasskeyWalletCard({
       ) : null}
 
       <div className="action-row">
-        {!linkedAddress ? (
-          <button className="button" disabled={isPending || linking} onClick={() => void handleConnect()} type="button">
-            {isPending || linking ? "Connecting…" : "Create or connect passkey wallet"}
-          </button>
-        ) : null}
+        <button className="button" disabled={isPending || linking} onClick={() => void handleConnect()} type="button">
+          {isPending || linking ? "Connecting…" : "Create or connect passkey wallet"}
+        </button>
         {isConnected && connectedAddress && !matchesLinkedWallet ? (
           <button
             className="button secondary"

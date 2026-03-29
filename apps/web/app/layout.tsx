@@ -57,9 +57,6 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                      Moderation
                    </Link>
                  ) : null}
-                 <Link className="top-nav-link" href="/dev-login">
-                    Dev Login
-                  </Link>
                 </div>
               </div>
             </nav>

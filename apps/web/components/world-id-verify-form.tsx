@@ -290,16 +290,26 @@ export function WorldIdVerifyForm({
   return (
     <section className="card stack">
       <div className="stack">
-        <h1>Verify with World ID</h1>
+        <div className="verify-title-row">
+          <span aria-hidden="true" className="world-id-logo">
+            <svg fill="none" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="20" cy="20" r="17" stroke="currentColor" strokeWidth="2.75" />
+              <path d="M20 6.5v27" stroke="currentColor" strokeLinecap="round" strokeWidth="2.5" />
+              <path d="M9.5 14.25h21" stroke="currentColor" strokeLinecap="round" strokeWidth="2.5" />
+              <path d="M9.5 25.75h21" stroke="currentColor" strokeLinecap="round" strokeWidth="2.5" />
+              <path d="M13 9.75c2.75 3.1 4.5 6.8 4.5 10.25S15.75 27.15 13 30.25" stroke="currentColor" strokeLinecap="round" strokeWidth="2.25" />
+              <path d="M27 9.75c-2.75 3.1-4.5 6.8-4.5 10.25S24.25 27.15 27 30.25" stroke="currentColor" strokeLinecap="round" strokeWidth="2.25" />
+            </svg>
+          </span>
+          <h1>Verify with World ID</h1>
+        </div>
         <p className="muted">
           Human Layer uses World ID to unlock one-human write access. Create a pseudonymous handle,
           pick your interests, then return to the same page with write actions enabled.
         </p>
-        <div className="pill">
-          {worldIdConfig.mode === "mock"
-            ? "Mock IDKit mode is active until app credentials are configured."
-            : "Live IDKit mode is active. The official World ID widget opens from this page."}
-        </div>
+        {worldIdConfig.mode === "mock" ? (
+          <div className="pill">Mock IDKit mode is active until app credentials are configured.</div>
+        ) : null}
       </div>
 
       <label className="field">
