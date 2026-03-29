@@ -113,3 +113,9 @@ Next steps include:
 - importing and mapping trusted people from X, YouTube, Discord, Steam, and other networks
 - expanding the cross-site human graph
 - turning verified-human trust into better discovery, messaging, and paid coordination everywhere online
+- making Human Layer work as a protocol, not just a single app surface
+- decentralizing storage, indexing, and message-routing over time
+- letting anyone run a Human Layer node and participate in the network
+- exposing open APIs and protocol-level primitives for publishers, apps, and agents
+- making reputation, follows, and page-level trust portable across clients
+- supporting a broader ecosystem of wallets, clients, and third-party interfaces
