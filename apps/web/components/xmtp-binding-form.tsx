@@ -7,7 +7,7 @@ type XmtpBindingFormProps = {
 };
 
 export function XmtpBindingForm({ initialInboxId = "" }: XmtpBindingFormProps) {
-  const [inboxId, setInboxId] = useState(initialInboxId);
+  const [inboxId, setInboxId] = useState(initialInboxId ?? "");
   const [status, setStatus] = useState<"idle" | "saving" | "saved">("idle");
   const [error, setError] = useState<string | null>(null);
 
