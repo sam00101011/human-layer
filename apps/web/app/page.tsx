@@ -3,6 +3,7 @@ import { FEATURED_TOPIC_TAGS, getInterestTagLabel } from "@human-layer/core";
 import {
   getContributorsActiveInViewerInterests,
   getFollowedProfileActivity,
+  getFollowedTopicsForProfile,
   getPagesBookmarkedByFollowedProfiles,
   getPeopleSimilarToFollowing,
   getPeopleToFollow,
@@ -36,7 +37,9 @@ export default async function HomePage(props: {
   const searchParams = props.searchParams ? await props.searchParams : {};
   const query = searchParams.q?.trim() ?? "";
   const viewer = await getAuthenticatedProfileFromCookies();
-  const featuredTopics = FEATURED_TOPIC_TAGS.slice(0, 3);
+  const followedTopics = viewer ? await getFollowedTopicsForProfile(viewer.id) : [];
+  const featuredTopics =
+    (followedTopics.length > 0 ? followedTopics : FEATURED_TOPIC_TAGS).slice(0, 3);
 
   const [
     trendingPages,
@@ -53,7 +56,15 @@ export default async function HomePage(props: {
     getRecommendedTakes(6, viewer?.id),
     viewer ? getFollowedProfileActivity(viewer.id, 6) : Promise.resolve([]),
     getPeopleToFollow(6, viewer?.id),
-    query ? searchDiscovery(query, 5) : Promise.resolve({ pages: [], takes: [], profiles: [] }),
+    query
+      ? searchDiscovery(query, 5)
+      : Promise.resolve({
+          pages: [],
+          takes: [],
+          profiles: [],
+          relatedQueries: [],
+          queryInsight: null
+        }),
     Promise.all(featuredTopics.map((topic) => getTopicSurface(topic, 3, viewer?.id))),
     viewer ? getPeopleSimilarToFollowing(viewer.id, 6) : Promise.resolve([]),
     viewer ? getPagesBookmarkedByFollowedProfiles(viewer.id, 6) : Promise.resolve([]),
@@ -117,6 +128,16 @@ export default async function HomePage(props: {
             </div>
           </label>
         </form>
+        {!query ? (
+          <div className="chip-row">
+            <span className="muted small-copy">Try:</span>
+            {featuredTopics.map((topic) => (
+              <Link className="chip" href={`/?q=${topic}`} key={topic}>
+                {getInterestTagLabel(topic)}
+              </Link>
+            ))}
+          </div>
+        ) : null}
       </section>
 
       {query ? (
@@ -125,6 +146,21 @@ export default async function HomePage(props: {
             <h2>Search results</h2>
             <span className="muted">Results for “{query}”.</span>
           </div>
+          {searchResults.queryInsight ? <p className="muted">{searchResults.queryInsight}</p> : null}
+          {searchResults.relatedQueries.length > 0 ? (
+            <div className="chip-row">
+              <span className="muted small-copy">Related:</span>
+              {searchResults.relatedQueries.map((suggestion) => (
+                <Link
+                  className="chip"
+                  href={`/?q=${encodeURIComponent(suggestion.query)}`}
+                  key={suggestion.query}
+                >
+                  {suggestion.label}
+                </Link>
+              ))}
+            </div>
+          ) : null}
           {searchResults.pages.length === 0 &&
           searchResults.takes.length === 0 &&
           searchResults.profiles.length === 0 ? (
@@ -238,14 +274,18 @@ export default async function HomePage(props: {
 
       <section className="card stack home-section">
         <div className="section-header">
-          <h2>Topic surfaces</h2>
-          <span className="muted">Move through the graph by recurring interests, not just by site.</span>
+          <h2>{followedTopics.length > 0 ? "This week in your followed topics" : "Weekly digests"}</h2>
+          <span className="muted">
+            {followedTopics.length > 0
+              ? "Topic summaries tuned to the interests you actively follow."
+              : "A quick weekly pass over the strongest live interest clusters."}
+          </span>
         </div>
         <div className="topic-grid">
           {topicSurfaces.map((surface) => (
             <article className="topic-card" key={surface.topic}>
               <div className="chip-row">
-                <span className="trust-badge">Topic</span>
+                <span className="trust-badge">This week in {surface.label}</span>
                 {surface.clusterTags.slice(0, 3).map((tag) => (
                   <Link className="chip" href={`/topics/${tag}`} key={tag}>
                     {getInterestTagLabel(tag)}
@@ -254,6 +294,16 @@ export default async function HomePage(props: {
               </div>
               <strong>{surface.label}</strong>
               <p className="muted">{surface.description}</p>
+              {surface.trendingPages[0] ? (
+                <p className="muted small-copy">
+                  Lead page: <strong>{surface.trendingPages[0].title}</strong> • {surface.trendingPages[0].reason}
+                </p>
+              ) : null}
+              {surface.topTakes[0] ? (
+                <p className="muted small-copy">
+                  Lead take: @{surface.topTakes[0].profileHandle} on {surface.topTakes[0].pageTitle}
+                </p>
+              ) : null}
               <div className="topic-stat-grid">
                 <div className="stat-card">
                   <strong>{surface.trendingPages.length}</strong>
@@ -282,6 +332,9 @@ export default async function HomePage(props: {
               <div className="action-row">
                 <Link className="button secondary subtle" href={`/topics/${surface.topic}`}>
                   Open topic
+                </Link>
+                <Link className="button secondary subtle" href="/notifications">
+                  Notification settings
                 </Link>
               </div>
             </article>

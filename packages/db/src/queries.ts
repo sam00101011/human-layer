@@ -195,10 +195,17 @@ export type DiscoveryProfile = {
   reason: string;
 };
 
+export type SearchSuggestion = {
+  query: string;
+  label: string;
+};
+
 export type DiscoverySearchResults = {
   pages: DiscoveryPage[];
   takes: DiscoveryTake[];
   profiles: DiscoveryProfile[];
+  relatedQueries: SearchSuggestion[];
+  queryInsight: string | null;
 };
 
 export type TopicSurface = {
@@ -417,6 +424,132 @@ function buildViewerOverlapReason(
   }
 
   return `Relevant to ${formatInterestList(overlap)}`;
+}
+
+function normalizeSearchText(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function getSearchMatchScore(candidate: string, query: string): number {
+  const normalizedCandidate = normalizeSearchText(candidate);
+  if (!normalizedCandidate || !query) {
+    return 0;
+  }
+
+  if (normalizedCandidate === query) {
+    return 120;
+  }
+
+  if (normalizedCandidate.startsWith(query)) {
+    return 72;
+  }
+
+  if (normalizedCandidate.includes(query)) {
+    return 36;
+  }
+
+  const compactCandidate = normalizedCandidate.replace(/[^a-z0-9]+/g, "");
+  const compactQuery = query.replace(/[^a-z0-9]+/g, "");
+
+  if (compactQuery && compactCandidate === compactQuery) {
+    return 96;
+  }
+
+  if (compactQuery && compactCandidate.includes(compactQuery)) {
+    return 24;
+  }
+
+  return 0;
+}
+
+function getInterestTagMatches(tags: readonly InterestTag[], query: string): InterestTag[] {
+  return tags.filter((tag) => {
+    const slugScore = getSearchMatchScore(tag, query);
+    const labelScore = getSearchMatchScore(getInterestTagLabel(tag), query);
+    return slugScore > 0 || labelScore > 0;
+  });
+}
+
+function getInterestTagSearchScore(tags: readonly InterestTag[], query: string): number {
+  return getInterestTagMatches(tags, query).reduce((score, tag) => {
+    return Math.max(
+      score,
+      getSearchMatchScore(tag, query),
+      getSearchMatchScore(getInterestTagLabel(tag), query)
+    );
+  }, 0);
+}
+
+function pushSearchSuggestion(
+  suggestions: SearchSuggestion[],
+  seen: Set<string>,
+  query: string,
+  label: string,
+  sourceQuery: string
+) {
+  const normalizedCandidate = normalizeSearchText(query);
+  const normalizedSource = normalizeSearchText(sourceQuery);
+
+  if (!normalizedCandidate || normalizedCandidate === normalizedSource || seen.has(normalizedCandidate)) {
+    return;
+  }
+
+  suggestions.push({ query, label });
+  seen.add(normalizedCandidate);
+}
+
+function findInterestTagFromQuery(query: string): InterestTag | null {
+  return (
+    INTEREST_TAGS.find((tag) => {
+      return (
+        normalizeSearchText(tag) === query ||
+        normalizeSearchText(getInterestTagLabel(tag)) === query
+      );
+    }) ?? null
+  );
+}
+
+function buildSearchInsight(params: {
+  query: string;
+  matchedTopic: InterestTag | null;
+  pages: DiscoveryPage[];
+  takes: DiscoveryTake[];
+  profiles: DiscoveryProfile[];
+}): string | null {
+  if (params.matchedTopic) {
+    return `Showing the strongest pages, takes, and people clustering around ${getInterestTagLabel(params.matchedTopic)}.`;
+  }
+
+  const exactProfile = params.profiles.find(
+    (profile) => normalizeSearchText(profile.handle) === normalizeSearchText(params.query)
+  );
+  if (exactProfile) {
+    return `Strongest graph matches for @${exactProfile.handle}, including their profile signal and nearby pages.`;
+  }
+
+  const exactPage = params.pages.find((page) => {
+    return (
+      normalizeSearchText(page.title) === normalizeSearchText(params.query) ||
+      normalizeSearchText(page.host) === normalizeSearchText(params.query)
+    );
+  });
+  if (exactPage) {
+    return `Prioritizing the strongest live graph signal around ${exactPage.title}.`;
+  }
+
+  if (params.pages.length > 0 && params.takes.length > 0) {
+    return `Showing page-level matches first, then verified takes with the strongest helpful and reputation signals.`;
+  }
+
+  if (params.takes.length > 0) {
+    return `Ranking takes by text match, helpful votes, contributor signal, and freshness.`;
+  }
+
+  if (params.profiles.length > 0) {
+    return `Showing people whose handle, interests, and contributor signal overlap with this search.`;
+  }
+
+  return null;
 }
 
 function buildDiscoveryTakeReason(params: {
@@ -1520,11 +1653,15 @@ export async function searchDiscovery(query: string, limit = 6): Promise<Discove
     return {
       pages: [],
       takes: [],
-      profiles: []
+      profiles: [],
+      relatedQueries: [],
+      queryInsight: null
     };
   }
 
+  const normalizedQuery = normalizeSearchText(trimmed);
   const pattern = `%${trimmed}%`;
+  const candidateLimit = Math.max(limit * 4, 24);
 
   const [pageRows, takeRows, profileRows, commentRows, followerRows] = await Promise.all([
     db
@@ -1538,7 +1675,7 @@ export async function searchDiscovery(query: string, limit = 6): Promise<Discove
       })
       .from(pages)
       .where(or(ilike(pages.title, pattern), ilike(pages.host, pattern), ilike(pages.canonicalUrl, pattern)))
-      .limit(limit),
+      .limit(candidateLimit),
     db
       .select({
         commentId: comments.id,
@@ -1569,7 +1706,7 @@ export async function searchDiscovery(query: string, limit = 6): Promise<Discove
         pages.canonicalUrl
       )
       .orderBy(desc(sql<number>`count(${commentHelpfulVotes.id})::int`), desc(comments.createdAt))
-      .limit(limit),
+      .limit(candidateLimit),
     db
       .select({
         id: profiles.id,
@@ -1584,7 +1721,7 @@ export async function searchDiscovery(query: string, limit = 6): Promise<Discove
           sql<boolean>`CAST(${profiles.interestTags} AS text) ILIKE ${pattern}`
         )
       )
-      .limit(limit),
+      .limit(candidateLimit),
     db
       .select({
         profileId: comments.profileId,
@@ -1604,63 +1741,53 @@ export async function searchDiscovery(query: string, limit = 6): Promise<Discove
 
   const commentCountMap = new Map(commentRows.map((row) => [row.profileId, row.count]));
   const followerCountMap = new Map(followerRows.map((row) => [row.profileId, row.count]));
-  const searchProfileReputationMap = await getContributorReputationMap(
-    profileRows.map((row) => row.id)
-  );
+  const [pageMap, takeReputationMap, searchProfileReputationMap] = await Promise.all([
+    getDiscoveryPagesByIds(pageRows.map((row) => row.id)),
+    getContributorReputationMap(takeRows.map((row) => row.profileId)),
+    getContributorReputationMap(profileRows.map((row) => row.id))
+  ]);
+  const matchedTopic = findInterestTagFromQuery(normalizedQuery);
 
-  const pagesWithContext = await Promise.all(
-    pageRows.map(async (page) => {
-      const thread = await getPageThreadSnapshot(page.id);
-      const context = buildPageContextSummary({
-        page: {
-          pageKind: page.pageKind as PageSummary["pageKind"],
-          host: page.host,
-          title: page.title
-        },
-        thread
-      });
+  const pagesWithContext = pageRows
+    .map((row) => pageMap.get(row.id))
+    .filter((page): page is DiscoveryPage => Boolean(page))
+    .map((page) => {
+      const titleScore = getSearchMatchScore(page.title, normalizedQuery);
+      const hostScore = getSearchMatchScore(page.host, normalizedQuery);
+      const urlScore = getSearchMatchScore(page.canonicalUrl, normalizedQuery);
+      const tagMatches = getInterestTagMatches(page.tags, normalizedQuery);
+      const tagScore = getInterestTagSearchScore(page.tags, normalizedQuery);
+      const reasonLead =
+        titleScore >= 120
+          ? "Exact title match"
+          : hostScore >= 120
+            ? "Exact host match"
+            : tagMatches.length > 0
+              ? `Matches ${formatInterestList(tagMatches.slice(0, 2))}`
+              : null;
 
       return {
-        id: page.id,
-        pageKind: page.pageKind as PageSummary["pageKind"],
-        canonicalUrl: page.canonicalUrl,
-        canonicalKey: page.canonicalKey,
-        host: page.host,
-        title: page.title,
-        verdictCount: Object.values(thread.verdictCounts).reduce((sum, count) => sum + count, 0),
-        commentCount: thread.recentComments.length,
-        bookmarkCount: 0,
-        activityScore: Object.values(thread.verdictCounts).reduce((sum, count) => sum + count, 0) + thread.recentComments.length,
-        summary: context.summary,
-        tags: context.tags,
-        reason: buildDiscoveryPageReason(
-          {
-            id: page.id,
-            pageKind: page.pageKind as PageSummary["pageKind"],
-            canonicalUrl: page.canonicalUrl,
-            canonicalKey: page.canonicalKey,
-            host: page.host,
-            title: page.title,
-            verdictCount: Object.values(thread.verdictCounts).reduce((sum, count) => sum + count, 0),
-            commentCount: thread.recentComments.length,
-            bookmarkCount: 0,
-            helpfulCount: thread.recentComments.reduce((sum, comment) => sum + comment.helpfulCount, 0),
-            activityScore:
-              Object.values(thread.verdictCounts).reduce((sum, count) => sum + count, 0) +
-              thread.recentComments.length,
-            latestActivityAt:
-              thread.recentComments[0]?.createdAt ??
-              new Date(0).toISOString()
-          },
-          thread
-        )
-      } satisfies DiscoveryPage;
+        ...page,
+        reason: [reasonLead, page.reason].filter((value): value is string => Boolean(value)).join(" • "),
+        score:
+          titleScore * 4 +
+          hostScore * 3 +
+          urlScore +
+          tagScore * 3 +
+          page.activityScore * 2 +
+          page.bookmarkCount * 3 +
+          page.verdictCount
+      };
     })
-  );
+    .sort((left, right) => right.score - left.score || right.activityScore - left.activityScore)
+    .slice(0, limit)
+    .map(({ score: _score, ...page }) => page);
 
-  return {
-    pages: pagesWithContext,
-    takes: takeRows.map((row) => {
+  const takePageMap = await getDiscoveryPagesByIds(takeRows.map((row) => row.pageId));
+  const takes = takeRows
+    .map((row) => {
+      const page = takePageMap.get(row.pageId);
+      const reputation = takeReputationMap.get(row.profileId) ?? defaultContributorReputation();
       const take = {
         commentId: row.commentId,
         body: row.body,
@@ -1672,19 +1799,69 @@ export async function searchDiscovery(query: string, limit = 6): Promise<Discove
         pageKind: row.pageKind as PageSummary["pageKind"],
         pageTitle: row.pageTitle,
         canonicalUrl: row.canonicalUrl,
-        reputation: defaultContributorReputation()
+        reputation
       } satisfies Omit<DiscoveryTake, "reason">;
+
+      const bodyScore = getSearchMatchScore(row.body, normalizedQuery);
+      const titleScore = getSearchMatchScore(row.pageTitle, normalizedQuery);
+      const handleScore = getSearchMatchScore(row.profileHandle, normalizedQuery);
+      const tagMatches = page ? getInterestTagMatches(page.tags, normalizedQuery) : [];
+      const reasonLead =
+        titleScore >= 120
+          ? "Exact page match"
+          : handleScore >= 120
+            ? `Exact handle match for @${row.profileHandle}`
+            : bodyScore >= 72
+              ? "Strong text match"
+              : tagMatches.length > 0
+                ? `Matches ${formatInterestList(tagMatches.slice(0, 2))}`
+                : null;
 
       return {
         ...take,
-        reason: buildDiscoveryTakeReason({ take })
+        reason: [
+          reasonLead,
+          buildDiscoveryTakeReason({
+            take,
+            page
+          })
+        ]
+          .filter((value): value is string => Boolean(value))
+          .join(" • "),
+        score:
+          titleScore * 4 +
+          bodyScore * 3 +
+          handleScore * 2 +
+          (page ? getInterestTagSearchScore(page.tags, normalizedQuery) * 2 : 0) +
+          rankTakeLikeSignal({
+            helpfulCount: row.helpfulCount,
+            createdAt: row.createdAt,
+            reputationLevel: reputation.level
+          }) *
+            2 +
+          (page?.bookmarkCount ?? 0)
       };
-    }),
-    profiles: profileRows.map((row) => {
+    })
+    .sort((left, right) => right.score - left.score || right.helpfulCount - left.helpfulCount)
+    .slice(0, limit)
+    .map(({ score: _score, ...take }) => take);
+
+  const profilesWithScores = profileRows
+    .map((row) => {
       const interestTags = coerceInterestTags(row.interestTags);
       const commentCount = commentCountMap.get(row.id) ?? 0;
       const followerCount = followerCountMap.get(row.id) ?? 0;
       const reputation = searchProfileReputationMap.get(row.id) ?? defaultContributorReputation();
+      const tagMatches = getInterestTagMatches(interestTags, normalizedQuery);
+      const handleScore = getSearchMatchScore(row.handle, normalizedQuery);
+      const tagScore = getInterestTagSearchScore(interestTags, normalizedQuery);
+      const reasonLead =
+        handleScore >= 120
+          ? `Exact handle match for @${row.handle}`
+          : tagMatches.length > 0
+            ? `Active around ${formatInterestList(tagMatches.slice(0, 3))}`
+            : null;
+
       return {
         id: row.id,
         handle: row.handle,
@@ -1693,11 +1870,67 @@ export async function searchDiscovery(query: string, limit = 6): Promise<Discove
         interestTags,
         commentCount,
         followerCount,
-        sharedInterestCount: 0,
-        reason: interestTags.length
-          ? `${reputation.description} • Active around ${formatInterestList(interestTags)}`
-          : reputation.description
-      } satisfies DiscoveryProfile;
+        sharedInterestCount: tagMatches.length,
+        reason: [reasonLead, interestTags.length ? `${reputation.description} • Active around ${formatInterestList(interestTags)}` : reputation.description]
+          .filter((value): value is string => Boolean(value))
+          .join(" • "),
+        score:
+          handleScore * 5 +
+          tagScore * 4 +
+          commentCount * 2 +
+          followerCount * 3 +
+          getReputationWeight(reputation.level) * 2
+      } satisfies DiscoveryProfile & { score: number };
+    })
+    .sort((left, right) => right.score - left.score || right.followerCount - left.followerCount);
+
+  const profilesWithContext = profilesWithScores
+    .slice(0, limit)
+    .map(({ score: _score, ...profile }) => profile);
+
+  const relatedQueries: SearchSuggestion[] = [];
+  const relatedQuerySet = new Set<string>();
+
+  if (matchedTopic) {
+    for (const relatedTag of getRelatedInterestTags([matchedTopic], 4)) {
+      pushSearchSuggestion(
+        relatedQueries,
+        relatedQuerySet,
+        relatedTag,
+        getInterestTagLabel(relatedTag),
+        trimmed
+      );
+    }
+  }
+
+  for (const page of pagesWithContext.slice(0, 4)) {
+    for (const tag of page.tags.slice(0, 2)) {
+      pushSearchSuggestion(relatedQueries, relatedQuerySet, tag, getInterestTagLabel(tag), trimmed);
+    }
+    pushSearchSuggestion(relatedQueries, relatedQuerySet, page.host, page.host, trimmed);
+  }
+
+  for (const profile of profilesWithContext.slice(0, 3)) {
+    pushSearchSuggestion(
+      relatedQueries,
+      relatedQuerySet,
+      profile.handle,
+      `@${profile.handle}`,
+      trimmed
+    );
+  }
+
+  return {
+    pages: pagesWithContext,
+    takes,
+    profiles: profilesWithContext,
+    relatedQueries: relatedQueries.slice(0, 6),
+    queryInsight: buildSearchInsight({
+      query: trimmed,
+      matchedTopic,
+      pages: pagesWithContext,
+      takes,
+      profiles: profilesWithContext
     })
   };
 }

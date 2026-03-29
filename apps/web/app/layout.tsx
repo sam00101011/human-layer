@@ -96,6 +96,9 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               <Link className="site-footer-link" href="/integrations">
                 Propose integration
               </Link>
+              <Link className="site-footer-link" href="/requested-integrations">
+                Request board
+              </Link>
               <Link className="site-footer-link" href="/privacy">
                 Privacy
               </Link>

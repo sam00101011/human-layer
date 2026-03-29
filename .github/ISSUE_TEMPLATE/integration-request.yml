@@ -1,0 +1,53 @@
+name: Integration request
+description: Request a new website, marketplace, plugin surface, or page shape for Human Layer.
+title: "[Integration request] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for proposing a new integration. This form is the lightest path if you do not want to open a PR yet.
+
+  - type: input
+    id: surface
+    attributes:
+      label: Website, marketplace, or plugin surface
+      description: What should Human Layer support?
+      placeholder: Raycast Extensions
+    validations:
+      required: true
+
+  - type: input
+    id: page-shape
+    attributes:
+      label: Page type or URL pattern
+      description: Which pages matter?
+      placeholder: raycast.com/extensions/*
+    validations:
+      required: true
+
+  - type: textarea
+    id: value-add
+    attributes:
+      label: Why does Human Layer add value here?
+      description: Describe what humans could add that generic comments or ratings do not cover.
+      placeholder: Install trust, maintenance signal, and real-world workflow fit.
+    validations:
+      required: true
+
+  - type: textarea
+    id: examples
+    attributes:
+      label: Example URLs
+      description: Share two or three real examples.
+      placeholder: |
+        https://example.com/one
+        https://example.com/two
+    validations:
+      required: true
+
+  - type: textarea
+    id: signals
+    attributes:
+      label: Suggested signals or overlay features
+      description: Optional ideas like timestamps, upgrade warnings, install trust, or best-for tags.
+      placeholder: Best part starts at..., safe to upgrade, people you trust bookmarked this.

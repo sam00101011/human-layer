@@ -106,6 +106,52 @@ export default async function TopicPage(props: {
 
       <section className="card stack home-section">
         <div className="section-header">
+          <h2>{surface.label} digest</h2>
+          <span className="muted">
+            A compact summary you can come back to without re-scanning the whole graph.
+          </span>
+        </div>
+        <div className="trust-grid">
+          {surface.trendingPages[0] ? (
+            <article className="trust-card">
+              <span className="eyebrow">Lead page</span>
+              <strong>{surface.trendingPages[0].title}</strong>
+              <p className="muted small-copy">{surface.trendingPages[0].reason}</p>
+            </article>
+          ) : null}
+          {surface.topTakes[0] ? (
+            <article className="trust-card">
+              <span className="eyebrow">Lead take</span>
+              <strong>@{surface.topTakes[0].profileHandle}</strong>
+              <p className="muted small-copy">{surface.topTakes[0].reason}</p>
+            </article>
+          ) : null}
+          {surface.topContributors[0] ? (
+            <article className="trust-card">
+              <span className="eyebrow">Lead contributor</span>
+              <strong>@{surface.topContributors[0].handle}</strong>
+              <p className="muted small-copy">{surface.topContributors[0].reason}</p>
+            </article>
+          ) : null}
+        </div>
+        <div className="action-row">
+          {viewer ? (
+            <Link className="button secondary subtle" href="/notifications">
+              Tune topic notifications
+            </Link>
+          ) : (
+            <Link className="button secondary subtle" href={`/verify?returnUrl=/topics/${topic}`}>
+              Verify to follow this topic
+            </Link>
+          )}
+          <Link className="button secondary subtle" href="/topics">
+            Browse more topics
+          </Link>
+        </div>
+      </section>
+
+      <section className="card stack home-section">
+        <div className="section-header">
           <h2>This week in {surface.label}</h2>
           <span className="muted">The freshest verified takes currently clustering into this topic.</span>
         </div>

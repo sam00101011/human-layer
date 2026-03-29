@@ -1,6 +1,10 @@
 "use client";
 
-import { getCommentReportReasonLabel, type CommentReportReasonCode } from "@human-layer/core";
+import {
+  getCommentReportReasonLabel,
+  getCommentReportReasonOptions,
+  type CommentReportReasonCode
+} from "@human-layer/core";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -63,15 +67,17 @@ export function ModerationQueue({ items }: ModerationQueueProps) {
   const router = useRouter();
   const [pendingCommentId, setPendingCommentId] = useState<string | null>(null);
   const [notesByCommentId, setNotesByCommentId] = useState<Record<string, string>>({});
+  const [query, setQuery] = useState("");
+  const [priorityFilter, setPriorityFilter] = useState<"all" | ModerationQueueItem["priorityLabel"]>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [reasonFilter, setReasonFilter] = useState<string>("all");
   const [error, setError] = useState<string | null>(null);
+  const reasonOptions = getCommentReportReasonOptions();
 
-  async function submitAction(
+  async function postModerationAction(
     item: ModerationQueueItem,
     action: "hide" | "dismiss" | "restore" | "block_profile" | "unblock_profile"
   ) {
-    setPendingCommentId(item.commentId);
-    setError(null);
-
     const response = await fetch(`/api/admin/moderation/comments/${item.commentId}`, {
       method: "POST",
       headers: {
@@ -93,8 +99,23 @@ export function ModerationQueue({ items }: ModerationQueueProps) {
       const payload = (response && (await response.json().catch(() => null))) as
         | { error?: string }
         | null;
+      return payload?.error ?? "Could not update moderation state.";
+    }
+
+    return null;
+  }
+
+  async function submitAction(
+    item: ModerationQueueItem,
+    action: "hide" | "dismiss" | "restore" | "block_profile" | "unblock_profile"
+  ) {
+    setPendingCommentId(item.commentId);
+    setError(null);
+
+    const nextError = await postModerationAction(item, action);
+    if (nextError) {
       setPendingCommentId(null);
-      setError(payload?.error ?? "Could not update moderation state.");
+      setError(nextError);
       return;
     }
 
@@ -102,14 +123,130 @@ export function ModerationQueue({ items }: ModerationQueueProps) {
     router.refresh();
   }
 
+  async function submitHideAndBlock(item: ModerationQueueItem) {
+    setPendingCommentId(item.commentId);
+    setError(null);
+
+    if (!item.commentHidden) {
+      const hideError = await postModerationAction(item, "hide");
+      if (hideError) {
+        setPendingCommentId(null);
+        setError(hideError);
+        return;
+      }
+    }
+
+    const blockError = await postModerationAction(item, "block_profile");
+    if (blockError) {
+      setPendingCommentId(null);
+      setError(blockError);
+      return;
+    }
+
+    setPendingCommentId(null);
+    router.refresh();
+  }
+
+  const filteredItems = items.filter((item) => {
+    const matchesQuery =
+      query.trim().length === 0 ||
+      [item.authorHandle, item.reporterHandle, item.pageTitle, item.pageHost, item.commentBody]
+        .join(" ")
+        .toLowerCase()
+        .includes(query.trim().toLowerCase());
+    const matchesPriority = priorityFilter === "all" || item.priorityLabel === priorityFilter;
+    const matchesStatus = statusFilter === "all" || item.status === statusFilter;
+    const matchesReason = reasonFilter === "all" || item.reasonCode === reasonFilter;
+
+    return matchesQuery && matchesPriority && matchesStatus && matchesReason;
+  });
+
   if (items.length === 0) {
     return <p className="muted">No reports are waiting for review.</p>;
   }
 
   return (
     <div className="stack">
+      <div className="trust-grid">
+        <article className="trust-card">
+          <span className="eyebrow">Open reports</span>
+          <strong>{items.filter((item) => item.status === "open").length}</strong>
+        </article>
+        <article className="trust-card">
+          <span className="eyebrow">Urgent now</span>
+          <strong>{items.filter((item) => item.priorityLabel === "urgent").length}</strong>
+        </article>
+        <article className="trust-card">
+          <span className="eyebrow">Scam or harm</span>
+          <strong>
+            {
+              items.filter((item) =>
+                ["scam", "privacy_doxxing", "hate_or_harm"].includes(item.reasonCode)
+              ).length
+            }
+          </strong>
+        </article>
+      </div>
+      <div className="filter-grid">
+        <label className="field">
+          <span className="muted small-copy">Find report</span>
+          <input
+            className="input"
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search author, page, or comment"
+            value={query}
+          />
+        </label>
+        <label className="field">
+          <span className="muted small-copy">Priority</span>
+          <select
+            className="input"
+            onChange={(event) =>
+              setPriorityFilter(event.target.value as "all" | ModerationQueueItem["priorityLabel"])
+            }
+            value={priorityFilter}
+          >
+            <option value="all">All priorities</option>
+            <option value="urgent">Urgent</option>
+            <option value="high">High</option>
+            <option value="standard">Standard</option>
+            <option value="low">Low</option>
+          </select>
+        </label>
+        <label className="field">
+          <span className="muted small-copy">Status</span>
+          <select
+            className="input"
+            onChange={(event) => setStatusFilter(event.target.value)}
+            value={statusFilter}
+          >
+            <option value="all">All statuses</option>
+            <option value="open">Open</option>
+            <option value="hidden">Hidden</option>
+            <option value="dismissed">Dismissed</option>
+            <option value="restored">Restored</option>
+            <option value="blocked_profile">Blocked profile</option>
+          </select>
+        </label>
+        <label className="field">
+          <span className="muted small-copy">Reason</span>
+          <select
+            className="input"
+            onChange={(event) => setReasonFilter(event.target.value)}
+            value={reasonFilter}
+          >
+            <option value="all">All reasons</option>
+            {reasonOptions.map((option) => (
+              <option key={option.code} value={option.code}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
       {error ? <p className="error-message">{error}</p> : null}
-      {items.map((item) => {
+      {filteredItems.length === 0 ? <p className="muted">No queue items match your current filters.</p> : null}
+      {filteredItems.map((item) => {
         const pending = pendingCommentId === item.commentId;
         const noteValue = notesByCommentId[item.commentId] ?? "";
 
@@ -169,7 +306,7 @@ export function ModerationQueue({ items }: ModerationQueueProps) {
             <label className="stack compact">
               <span className="muted small-copy">Admin note</span>
               <textarea
-                className="input-field"
+                className="textarea"
                 onChange={(event) => {
                   setNotesByCommentId((current) => ({
                     ...current,
@@ -226,6 +363,18 @@ export function ModerationQueue({ items }: ModerationQueueProps) {
                     ? `Escalate and block @${item.authorHandle}`
                     : `Block @${item.authorHandle}`}
               </button>
+              {!item.authorBlockedAt ? (
+                <button
+                  className="button secondary"
+                  disabled={pending}
+                  onClick={() => {
+                    void submitHideAndBlock(item);
+                  }}
+                  type="button"
+                >
+                  {pending ? "Saving..." : `Hide and block @${item.authorHandle}`}
+                </button>
+              ) : null}
             </div>
           </article>
         );

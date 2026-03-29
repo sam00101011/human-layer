@@ -3,6 +3,8 @@ import Link from "next/link";
 const githubRepoUrl = "https://github.com/sam00101011/human-layer";
 const githubForkUrl = "https://github.com/sam00101011/human-layer/fork";
 const githubPullsUrl = "https://github.com/sam00101011/human-layer/pulls";
+const githubIssueUrl =
+  "https://github.com/sam00101011/human-layer/issues/new?template=integration-request.yml";
 const githubTemplateUrl =
   "https://github.com/sam00101011/human-layer/blob/main/.github/PULL_REQUEST_TEMPLATE/integration-proposal.md";
 const githubGuideUrl =
@@ -28,6 +30,9 @@ export default function IntegrationsPage() {
           <a className="button" href={githubForkUrl} rel="noreferrer" target="_blank">
             Fork and start a PR
           </a>
+          <a className="button secondary" href={githubIssueUrl} rel="noreferrer" target="_blank">
+            Request via GitHub issue
+          </a>
           <a className="button secondary" href={githubTemplateUrl} rel="noreferrer" target="_blank">
             Open PR template
           </a>
@@ -48,6 +53,26 @@ export default function IntegrationsPage() {
           <li>Use the dedicated integration PR template.</li>
           <li>Open a PR, even if it only adds docs and example URLs.</li>
         </ol>
+      </section>
+
+      <section className="card stack">
+        <div className="section-header">
+          <h2>Not coding? Use the request board</h2>
+          <span className="muted">A lighter path for people who want to suggest a site without opening a PR.</span>
+        </div>
+        <p className="muted">
+          Open the GitHub issue form if you just want to propose a new site, marketplace, or page
+          shape. We track active requests on the public board so people can see what is requested,
+          under review, already building, or live.
+        </p>
+        <div className="chip-row">
+          <a className="button secondary" href={githubIssueUrl} rel="noreferrer" target="_blank">
+            Open issue form
+          </a>
+          <Link className="button secondary" href="/requested-integrations">
+            View request board
+          </Link>
+        </div>
       </section>
 
       <section className="card stack">
@@ -93,6 +118,9 @@ export default function IntegrationsPage() {
           <a className="button secondary" href={githubGuideUrl} rel="noreferrer" target="_blank">
             Open integration guide
           </a>
+          <Link className="button secondary" href="/requested-integrations">
+            Request board
+          </Link>
           <Link className="button secondary" href="/support">
             Support
           </Link>
