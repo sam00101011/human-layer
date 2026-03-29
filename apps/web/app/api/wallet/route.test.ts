@@ -2,15 +2,16 @@ import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  ensureManagedWalletForProfile: vi.fn(),
+  getManagedWalletSnapshot: vi.fn(),
   updateManagedWalletSettings: vi.fn(),
   getAuthenticatedProfileFromRequest: vi.fn(),
   assertProfileCanParticipate: vi.fn()
 }));
 
 vi.mock("@human-layer/db", () => ({
+  DEFAULT_CLIENT_WALLET_PROVIDERS: ["stableenrich_answer", "stableenrich_search"],
   MANAGED_WALLET_PROVIDERS: ["exa", "perplexity", "opus_46"],
-  ensureManagedWalletForProfile: mocks.ensureManagedWalletForProfile,
+  getManagedWalletSnapshot: mocks.getManagedWalletSnapshot,
   updateManagedWalletSettings: mocks.updateManagedWalletSettings
 }));
 
@@ -28,7 +29,7 @@ describe("wallet route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.assertProfileCanParticipate.mockResolvedValue(null);
-    mocks.ensureManagedWalletForProfile.mockResolvedValue({
+    mocks.getManagedWalletSnapshot.mockResolvedValue({
       walletId: "wallet-1"
     });
     mocks.updateManagedWalletSettings.mockResolvedValue({
@@ -55,10 +56,7 @@ describe("wallet route", () => {
 
     const response = await GET(new NextRequest("http://localhost/api/wallet"));
 
-    expect(mocks.ensureManagedWalletForProfile).toHaveBeenCalledWith({
-      profileId: "profile-1",
-      handle: "demo_builder"
-    });
+    expect(mocks.getManagedWalletSnapshot).toHaveBeenCalledWith("profile-1");
     expect(response.status).toBe(200);
   });
 

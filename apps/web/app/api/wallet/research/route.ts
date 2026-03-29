@@ -1,17 +1,12 @@
 import {
-  ensureManagedWalletForProfile,
   findPageById,
-  getPageThreadSnapshot,
+  getManagedWalletSnapshot,
   recordWalletResearchPayment,
   type ManagedWalletProviderId
 } from "@human-layer/db";
 import { NextRequest, NextResponse } from "next/server";
 
-import {
-  getWalletResearchProvider,
-  isWalletResearchProviderConfigured,
-  runWalletResearch
-} from "../../../lib/wallet-tools";
+import { getWalletResearchProvider, type WalletResearchResult } from "../../../lib/wallet-tools";
 import { getAuthenticatedProfileFromRequest } from "../../../lib/auth";
 import { assertProfileCanParticipate } from "../../../lib/safety";
 
@@ -32,6 +27,10 @@ export async function POST(request: NextRequest) {
     | {
         pageId?: string;
         provider?: string;
+        amountUsdCents?: number;
+        paymentRail?: string;
+        paymentResponseHeader?: string | null;
+        result?: WalletResearchResult | null;
       }
     | null;
 
@@ -44,13 +43,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "page not found" }, { status: 404 });
   }
 
-  const wallet = await ensureManagedWalletForProfile({
-    profileId: viewer.id,
-    handle: viewer.handle
-  });
-
-  if (!wallet.spendingEnabled) {
-    return NextResponse.json({ error: "wallet spending is disabled" }, { status: 409 });
+  const wallet = await getManagedWalletSnapshot(viewer.id);
+  if (!wallet) {
+    return NextResponse.json({ error: "connect a wallet first" }, { status: 409 });
   }
 
   const providerId: ManagedWalletProviderId =
@@ -58,44 +53,54 @@ export async function POST(request: NextRequest) {
       ? (body.provider as ManagedWalletProviderId)
       : wallet.defaultProvider;
   const provider = getWalletResearchProvider(providerId);
-  const configured = isWalletResearchProviderConfigured(provider.id);
+  const amountUsdCents = Math.max(
+    0,
+    typeof body.amountUsdCents === "number"
+      ? Math.round(body.amountUsdCents)
+      : body.result?.mode === "live"
+        ? provider.priceUsdCents
+        : 0
+  );
 
   if (!wallet.enabledProviders.includes(provider.id)) {
     return NextResponse.json({ error: "provider disabled for this wallet" }, { status: 409 });
   }
 
-  if (configured && wallet.availableCreditUsdCents < provider.priceUsdCents) {
-    return NextResponse.json({ error: "not enough wallet credit" }, { status: 409 });
+  if (amountUsdCents > 0 && !wallet.spendingEnabled) {
+    return NextResponse.json({ error: "wallet spending is disabled" }, { status: 409 });
   }
 
-  if (configured && wallet.remainingDailyBudgetUsdCents < provider.priceUsdCents) {
+  if (amountUsdCents > 0 && wallet.remainingDailyBudgetUsdCents < amountUsdCents) {
     return NextResponse.json({ error: "daily wallet cap reached" }, { status: 409 });
   }
 
-  const thread = await getPageThreadSnapshot(page.id, viewer.id);
-  const execution = await runWalletResearch({
-    page,
-    thread,
-    providerId: provider.id
-  });
+  if (!body.result) {
+    return NextResponse.json({ error: "result is required" }, { status: 400 });
+  }
+
+  if (body.result.providerId !== provider.id) {
+    return NextResponse.json({ error: "provider mismatch" }, { status: 400 });
+  }
+
   const payment = await recordWalletResearchPayment({
     profileId: viewer.id,
     pageId: page.id,
     provider: provider.id,
-    amountUsdCents: execution.chargedUsdCents,
+    amountUsdCents,
     description: provider.label + ": " + page.title,
-    status: execution.result.mode,
+    status: body.result.mode,
     metadata: {
-      query: execution.result.query,
+      query: body.result.query,
       pageHost: page.host,
       pageKind: page.pageKind,
-      providerConfigured: execution.providerConfigured
+      paymentRail: body.paymentRail ?? (amountUsdCents > 0 ? "wallet_signed_x402" : "preview"),
+      paymentResponseHeader: body.paymentResponseHeader ?? null
     }
   });
 
   return NextResponse.json({
     ok: true,
     payment,
-    result: execution.result
+    result: body.result
   });
 }

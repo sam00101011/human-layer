@@ -110,6 +110,14 @@ export const MANAGED_WALLET_PROVIDERS = [
 ] as const;
 
 export type ManagedWalletProviderId = (typeof MANAGED_WALLET_PROVIDERS)[number];
+export const DEFAULT_CLIENT_WALLET_PROVIDERS = [
+  "stableenrich_answer",
+  "stableenrich_search",
+  "stableenrich_contents",
+  "anybrowse_scrape",
+  "stableclaude_giga",
+  "twitsh_search"
+] as const satisfies readonly ManagedWalletProviderId[];
 
 export type WalletPaymentEvent = {
   id: string;
@@ -127,11 +135,13 @@ export type ManagedWalletSnapshot = {
   walletId: string;
   walletAddress: string;
   walletLabel: string;
+  walletProvider: string;
+  walletType: string;
   network: string;
   status: string;
   passkeyReady: boolean;
+  delegatedSession: Record<string, unknown>;
   spendingEnabled: boolean;
-  availableCreditUsdCents: number;
   dailySpendLimitUsdCents: number;
   defaultProvider: ManagedWalletProviderId;
   enabledProviders: ManagedWalletProviderId[];
@@ -144,7 +154,6 @@ export type ManagedWalletSnapshot = {
 
 export type WalletResearchPaymentRecord = {
   eventId: string;
-  remainingCreditUsdCents: number;
   remainingDailyBudgetUsdCents: number;
 };
 
@@ -1238,10 +1247,6 @@ function toIsoDateString(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
 
-function createManagedWalletAddress(profileId: string): string {
-  return "0x" + createHash("sha256").update("managed-wallet:" + profileId).digest("hex").slice(0, 40);
-}
-
 function sanitizeManagedWalletProvider(
   provider: string | null | undefined
 ): ManagedWalletProviderId {
@@ -1249,7 +1254,7 @@ function sanitizeManagedWalletProvider(
     return provider as ManagedWalletProviderId;
   }
 
-  return "exa";
+  return DEFAULT_CLIENT_WALLET_PROVIDERS[0];
 }
 
 function sanitizeManagedWalletProviders(
@@ -1260,7 +1265,7 @@ function sanitizeManagedWalletProviders(
     .map((value) => sanitizeManagedWalletProvider(value))
     .filter((value, index, array) => array.indexOf(value) === index);
 
-  return unique.length > 0 ? unique : ["exa"];
+  return unique.length > 0 ? unique : [...DEFAULT_CLIENT_WALLET_PROVIDERS];
 }
 
 function rankTakeLikeSignal(params: {
@@ -2593,24 +2598,72 @@ export async function ensureManagedWalletForProfile(params: {
   profileId: string;
   handle?: string | null;
 }): Promise<ManagedWalletSnapshot> {
+  const snapshot = await getManagedWalletSnapshot(params.profileId);
+  if (!snapshot) {
+    throw new Error("wallet not linked");
+  }
+
+  return snapshot;
+}
+
+export async function linkManagedWalletToProfile(params: {
+  profileId: string;
+  handle?: string | null;
+  walletAddress: string;
+  walletProvider?: string | null;
+  walletType?: string | null;
+  network?: string | null;
+  delegatedSession?: Record<string, unknown> | null;
+}): Promise<ManagedWalletSnapshot> {
+  const walletAddress = params.walletAddress.trim().toLowerCase();
+  const walletProvider = params.walletProvider?.trim() || "coinbase_smart_wallet";
+  const walletType = params.walletType?.trim() || "passkey_smart_wallet";
+  const network = params.network?.trim() || "base";
+  const delegatedSession = params.delegatedSession ?? {};
+  const walletLabel = params.handle ? "@" + params.handle + " wallet" : "Human Layer Wallet";
+  const defaultProvider = DEFAULT_CLIENT_WALLET_PROVIDERS[0];
+  const enabledProviders = [...DEFAULT_CLIENT_WALLET_PROVIDERS];
+
   const existing = await db.query.managedWallets.findFirst({
     where: eq(managedWallets.profileId, params.profileId)
   });
 
-  if (!existing) {
+  if (existing) {
     await db
-      .insert(managedWallets)
-      .values({
-        profileId: params.profileId,
-        walletAddress: createManagedWalletAddress(params.profileId),
-        walletLabel: params.handle ? "@" + params.handle + " wallet" : "Human Layer Wallet"
+      .update(managedWallets)
+      .set({
+        walletAddress,
+        walletLabel,
+        walletProvider,
+        walletType,
+        network,
+        status: "linked",
+        passkeyReady: true,
+        delegatedSession,
+        defaultProvider,
+        enabledProviders,
+        updatedAt: new Date()
       })
-      .onConflictDoNothing({ target: managedWallets.profileId });
+      .where(eq(managedWallets.id, existing.id));
+  } else {
+    await db.insert(managedWallets).values({
+      profileId: params.profileId,
+      walletAddress,
+      walletLabel,
+      walletProvider,
+      walletType,
+      network,
+      status: "linked",
+      passkeyReady: true,
+      delegatedSession,
+      defaultProvider,
+      enabledProviders
+    });
   }
 
   const snapshot = await getManagedWalletSnapshot(params.profileId);
   if (!snapshot) {
-    throw new Error("wallet provisioning failed");
+    throw new Error("wallet link failed");
   }
 
   return snapshot;
@@ -2666,11 +2719,13 @@ export async function getManagedWalletSnapshot(
     walletId: wallet.id,
     walletAddress: wallet.walletAddress,
     walletLabel: wallet.walletLabel,
+    walletProvider: wallet.walletProvider,
+    walletType: wallet.walletType,
     network: wallet.network,
     status: wallet.status,
     passkeyReady: wallet.passkeyReady,
+    delegatedSession: wallet.delegatedSession,
     spendingEnabled: wallet.spendingEnabled,
-    availableCreditUsdCents: wallet.availableCreditUsdCents,
     dailySpendLimitUsdCents: wallet.dailySpendLimitUsdCents,
     defaultProvider: sanitizeManagedWalletProvider(wallet.defaultProvider),
     enabledProviders: sanitizeManagedWalletProviders(wallet.enabledProviders),
@@ -2699,7 +2754,10 @@ export async function updateManagedWalletSettings(params: {
   defaultProvider: ManagedWalletProviderId;
   enabledProviders: ManagedWalletProviderId[];
 }): Promise<ManagedWalletSnapshot> {
-  const wallet = await ensureManagedWalletForProfile({ profileId: params.profileId });
+  const wallet = await getManagedWalletSnapshot(params.profileId);
+  if (!wallet) {
+    throw new Error("wallet not linked");
+  }
   const enabledProviders = sanitizeManagedWalletProviders(params.enabledProviders);
   const defaultProvider = enabledProviders.includes(params.defaultProvider)
     ? params.defaultProvider
@@ -2728,8 +2786,10 @@ export async function recordWalletResearchPayment(params: {
   status: string;
   metadata?: Record<string, unknown>;
 }): Promise<WalletResearchPaymentRecord> {
-  const wallet = await ensureManagedWalletForProfile({ profileId: params.profileId });
-  const nextCredit = Math.max(0, wallet.availableCreditUsdCents - params.amountUsdCents);
+  const wallet = await getManagedWalletSnapshot(params.profileId);
+  if (!wallet) {
+    throw new Error("wallet not linked");
+  }
 
   await db.transaction(async (tx) => {
     await tx.insert(x402Events).values({
@@ -2747,7 +2807,6 @@ export async function recordWalletResearchPayment(params: {
     await tx
       .update(managedWallets)
       .set({
-        availableCreditUsdCents: nextCredit,
         lastUsedAt: new Date(),
         updatedAt: new Date()
       })
@@ -2761,7 +2820,6 @@ export async function recordWalletResearchPayment(params: {
 
   return {
     eventId: updated.paymentHistory[0]?.id ?? "",
-    remainingCreditUsdCents: updated.availableCreditUsdCents,
     remainingDailyBudgetUsdCents: updated.remainingDailyBudgetUsdCents
   };
 }

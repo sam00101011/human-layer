@@ -372,16 +372,28 @@ export const managedWallets = pgTable(
       .references(() => profiles.id, { onDelete: "cascade" }),
     walletAddress: text("wallet_address").notNull(),
     walletLabel: text("wallet_label").notNull().default("Human Layer Wallet"),
+    walletProvider: text("wallet_provider").notNull().default("coinbase_smart_wallet"),
+    walletType: text("wallet_type").notNull().default("passkey_smart_wallet"),
     network: text("network").notNull().default("base"),
     status: text("status").notNull().default("active"),
     passkeyReady: boolean("passkey_ready").default(true).notNull(),
+    delegatedSession: jsonb("delegated_session")
+      .$type<Record<string, unknown>>()
+      .default({})
+      .notNull(),
     spendingEnabled: boolean("spending_enabled").default(true).notNull(),
-    availableCreditUsdCents: integer("available_credit_usd_cents").default(2500).notNull(),
     dailySpendLimitUsdCents: integer("daily_spend_limit_usd_cents").default(1000).notNull(),
-    defaultProvider: text("default_provider").notNull().default("exa"),
+    defaultProvider: text("default_provider").notNull().default("stableenrich_answer"),
     enabledProviders: jsonb("enabled_providers")
       .$type<string[]>()
-      .default(["exa", "perplexity", "opus_46"])
+      .default([
+        "stableenrich_answer",
+        "stableenrich_search",
+        "stableenrich_contents",
+        "anybrowse_scrape",
+        "stableclaude_giga",
+        "twitsh_search"
+      ])
       .notNull(),
     lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

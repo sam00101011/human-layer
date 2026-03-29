@@ -1,6 +1,7 @@
 import {
+  DEFAULT_CLIENT_WALLET_PROVIDERS,
   MANAGED_WALLET_PROVIDERS,
-  ensureManagedWalletForProfile,
+  getManagedWalletSnapshot,
   updateManagedWalletSettings
 } from "@human-layer/db";
 import { NextRequest, NextResponse } from "next/server";
@@ -10,7 +11,7 @@ import { assertProfileCanParticipate } from "../../lib/safety";
 
 function sanitizeProviders(input: unknown): Array<(typeof MANAGED_WALLET_PROVIDERS)[number]> {
   if (!Array.isArray(input)) {
-    return ["exa"];
+    return [...DEFAULT_CLIENT_WALLET_PROVIDERS];
   }
 
   const values = input
@@ -19,7 +20,7 @@ function sanitizeProviders(input: unknown): Array<(typeof MANAGED_WALLET_PROVIDE
     })
     .filter((value, index, array) => array.indexOf(value) === index);
 
-  return values.length > 0 ? values : ["exa"];
+  return values.length > 0 ? values : [...DEFAULT_CLIENT_WALLET_PROVIDERS];
 }
 
 export async function GET(request: NextRequest) {
@@ -33,14 +34,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: restriction }, { status: 403 });
   }
 
-  const wallet = await ensureManagedWalletForProfile({
-    profileId: viewer.id,
-    handle: viewer.handle
-  });
-
   return NextResponse.json({
     ok: true,
-    wallet
+    wallet: await getManagedWalletSnapshot(viewer.id)
   });
 }
 
@@ -69,19 +65,27 @@ export async function PATCH(request: NextRequest) {
     ? (body?.defaultProvider as (typeof MANAGED_WALLET_PROVIDERS)[number])
     : enabledProviders[0];
 
-  const wallet = await updateManagedWalletSettings({
-    profileId: viewer.id,
-    spendingEnabled: body?.spendingEnabled ?? true,
-    dailySpendLimitUsdCents: Math.max(
-      100,
-      typeof body?.dailySpendLimitUsdCents === "number" ? body.dailySpendLimitUsdCents : 1000
-    ),
-    defaultProvider,
-    enabledProviders
-  });
+  try {
+    const wallet = await updateManagedWalletSettings({
+      profileId: viewer.id,
+      spendingEnabled: body?.spendingEnabled ?? true,
+      dailySpendLimitUsdCents: Math.max(
+        100,
+        typeof body?.dailySpendLimitUsdCents === "number" ? body.dailySpendLimitUsdCents : 1000
+      ),
+      defaultProvider,
+      enabledProviders
+    });
 
-  return NextResponse.json({
-    ok: true,
-    wallet
-  });
+    return NextResponse.json({
+      ok: true,
+      wallet
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === "wallet not linked") {
+      return NextResponse.json({ error: "connect a wallet first" }, { status: 409 });
+    }
+
+    throw error;
+  }
 }

@@ -1,15 +1,20 @@
-import { buildPageContextSummary, type ThreadSnapshot } from "@human-layer/core";
-import type { ManagedWalletProviderId, StoredPage } from "@human-layer/db";
-import { ExactEvmScheme } from "@x402/evm";
+import { buildPageContextSummary, type PageSummary, type ThreadSnapshot } from "@human-layer/core";
+import type { ManagedWalletProviderId } from "@human-layer/db";
+import { ExactEvmScheme, toClientEvmSigner } from "@x402/evm";
 import { wrapFetchWithPaymentFromConfig } from "@x402/fetch";
-import { Mppx, tempo } from "mppx/client";
-import { privateKeyToAccount } from "viem/accounts";
+
+export type WalletResearchPageInput = Pick<
+  PageSummary,
+  "id" | "pageKind" | "canonicalUrl" | "host" | "title"
+>;
 
 export type WalletResearchProvider = {
   id: ManagedWalletProviderId;
   label: string;
   description: string;
   priceUsdCents: number;
+  executionMode: "wallet_signed_x402" | "preview";
+  hidden?: boolean;
 };
 
 export type WalletResearchResult = {
@@ -24,169 +29,126 @@ export type WalletResearchResult = {
   citations: Array<{ label: string; url: string }>;
 };
 
-export type WalletResearchRun = {
+export type WalletResearchExecution = {
   result: WalletResearchResult;
   chargedUsdCents: number;
-  providerConfigured: boolean;
+  paymentRail: "wallet_signed_x402" | "preview";
+  paymentResponseHeader: string | null;
 };
 
-type PerplexityResponse = {
-  choices?: Array<{
-    message?: {
-      content?: string;
-    };
-  }>;
-  citations?: Array<string | { title?: string; label?: string; url?: string }>;
-};
-
-type AnthropicResponse = {
-  content?: Array<{
-    type?: string;
-    text?: string;
-  }>;
-};
-
+type WalletPaymentFetch = typeof fetch;
 type GenericRecord = Record<string, unknown>;
+
+type ClientWalletPaymentContext = {
+  address: `0x${string}`;
+  signTypedData(message: {
+    domain: Record<string, unknown>;
+    types: Record<string, unknown>;
+    primaryType: string;
+    message: Record<string, unknown>;
+  }): Promise<`0x${string}`>;
+  publicClient?: {
+    readContract(args: {
+      address: `0x${string}`;
+      abi: readonly unknown[];
+      functionName: string;
+      args?: readonly unknown[];
+    }): Promise<unknown>;
+    getTransactionCount?(args: { address: `0x${string}` }): Promise<number>;
+    estimateFeesPerGas?(): Promise<{
+      maxFeePerGas: bigint;
+      maxPriorityFeePerGas: bigint;
+    }>;
+  };
+  network?: `${string}:${string}`;
+};
 
 const providers: Record<ManagedWalletProviderId, WalletResearchProvider> = {
   exa: {
     id: "exa",
     label: "Exa / Direct",
-    description: "Direct API research with fast page-aware synthesis, citations, and adjacent context.",
-    priceUsdCents: 15
+    description:
+      "Planned direct gateway integration. In the client-owned wallet flow this stays as a preview while native x402 research runs through StableEnrich.",
+    priceUsdCents: 15,
+    executionMode: "preview"
   },
   perplexity: {
     id: "perplexity",
     label: "Perplexity / Direct",
-    description: "Direct API browse mode for concise answers and citations around the current page.",
-    priceUsdCents: 20
+    description:
+      "Planned direct gateway integration. Preview-only for now in the passkey wallet flow.",
+    priceUsdCents: 20,
+    executionMode: "preview"
   },
   opus_46: {
     id: "opus_46",
     label: "Claude / Opus / Direct",
-    description: "Direct API deep synthesis for when a page needs stronger judgment and framing.",
-    priceUsdCents: 35
+    description:
+      "Planned deep-synthesis gateway integration. Preview-only for now in the passkey wallet flow.",
+    priceUsdCents: 35,
+    executionMode: "preview"
   },
   stableenrich_answer: {
     id: "stableenrich_answer",
     label: "StableEnrich / Answer",
-    description: "Native x402 answer flow with quick cited synthesis for the page in front of you.",
-    priceUsdCents: 1
+    description:
+      "Wallet-signed x402 answer flow with quick cited synthesis for the page in front of you.",
+    priceUsdCents: 1,
+    executionMode: "wallet_signed_x402"
   },
   stableenrich_search: {
     id: "stableenrich_search",
     label: "StableEnrich / Search",
-    description: "Native x402 web search for adjacent sources, supporting links, and citations.",
-    priceUsdCents: 1
+    description:
+      "Wallet-signed x402 web search for adjacent sources, supporting links, and citations.",
+    priceUsdCents: 1,
+    executionMode: "wallet_signed_x402"
   },
   stableenrich_contents: {
     id: "stableenrich_contents",
     label: "StableEnrich / Contents",
-    description: "Native x402 page-content extraction tuned to the specific URL you are viewing.",
-    priceUsdCents: 1
+    description:
+      "Wallet-signed x402 page-content extraction tuned to the specific URL you are viewing.",
+    priceUsdCents: 1,
+    executionMode: "wallet_signed_x402"
   },
   anybrowse_scrape: {
     id: "anybrowse_scrape",
     label: "anybrowse / Scrape",
-    description: "Native x402 scrape-to-markdown for hard pages, rendered apps, and cleaner context.",
-    priceUsdCents: 1
+    description:
+      "Wallet-signed x402 scrape-to-markdown for hard pages, rendered apps, and cleaner context.",
+    priceUsdCents: 1,
+    executionMode: "wallet_signed_x402"
   },
   stableclaude_giga: {
     id: "stableclaude_giga",
     label: "StableClaude / Giga",
-    description: "Native x402 async deep-research run when you want a heavier agent-style pass.",
-    priceUsdCents: 100
+    description:
+      "Wallet-signed x402 async deep-research run for when a page needs a heavier agent-style pass.",
+    priceUsdCents: 100,
+    executionMode: "wallet_signed_x402"
   },
   parallel_search: {
     id: "parallel_search",
     label: "Parallel / Search",
-    description: "MPP-native search for structured web results with stronger retrieval and ranking.",
-    priceUsdCents: 1
+    description:
+      "MPP session flow planned next. For now this stays preview-only until delegated Tempo sessions are wired.",
+    priceUsdCents: 1,
+    executionMode: "preview",
+    hidden: true
   },
   twitsh_search: {
     id: "twitsh_search",
     label: "twit.sh / Search",
-    description: "Native x402 X/Twitter search for live conversation, launch chatter, and market context.",
-    priceUsdCents: 1
+    description:
+      "Wallet-signed x402 X/Twitter search for live conversation, launch chatter, and market context.",
+    priceUsdCents: 1,
+    executionMode: "wallet_signed_x402"
   }
 };
 
-let cachedX402Fetch:
-  | ((input: RequestInfo | URL, init?: RequestInit) => Promise<Response>)
-  | null
-  | undefined;
-let cachedParallelFetch:
-  | ((input: RequestInfo | URL, init?: RequestInit) => Promise<Response>)
-  | null
-  | undefined;
-
 function isRecord(value: unknown): value is GenericRecord {
   return typeof value === "object" && value !== null;
-}
-
-function ensureHexPrivateKey(value: string | undefined): `0x${string}` | null {
-  const trimmed = value?.trim();
-  if (!trimmed) return null;
-  return (trimmed.startsWith("0x") ? trimmed : "0x" + trimmed) as `0x${string}`;
-}
-
-function getX402PaymentFetch() {
-  if (cachedX402Fetch !== undefined) {
-    return cachedX402Fetch;
-  }
-
-  const privateKey = ensureHexPrivateKey(process.env.X402_EVM_PRIVATE_KEY);
-  if (!privateKey) {
-    cachedX402Fetch = null;
-    return cachedX402Fetch;
-  }
-
-  try {
-    const account = privateKeyToAccount(privateKey);
-    cachedX402Fetch = wrapFetchWithPaymentFromConfig(fetch, {
-      schemes: [
-        {
-          network: (process.env.X402_EVM_NETWORK?.trim() || "eip155:*") as `${string}:${string}`,
-          client: new ExactEvmScheme(account)
-        }
-      ]
-    });
-  } catch {
-    cachedX402Fetch = null;
-  }
-
-  return cachedX402Fetch;
-}
-
-function getParallelPaymentFetch() {
-  if (cachedParallelFetch !== undefined) {
-    return cachedParallelFetch;
-  }
-
-  const privateKey = ensureHexPrivateKey(process.env.MPPX_PRIVATE_KEY);
-  if (!privateKey) {
-    cachedParallelFetch = null;
-    return cachedParallelFetch;
-  }
-
-  try {
-    const account = privateKeyToAccount(privateKey);
-    const rpcUrl = process.env.MPPX_RPC_URL?.trim();
-    const client = Mppx.create({
-      methods: [
-        tempo({
-          account,
-          ...(rpcUrl ? { rpcUrl } : {})
-        })
-      ],
-      polyfill: false
-    });
-    cachedParallelFetch = client.fetch as typeof fetch;
-  } catch {
-    cachedParallelFetch = null;
-  }
-
-  return cachedParallelFetch;
 }
 
 function pickDominantVerdict(verdictCounts: ThreadSnapshot["verdictCounts"]) {
@@ -455,7 +417,7 @@ function buildSearchLikeResult(params: {
 }
 
 function buildResearchQuery(params: {
-  page: StoredPage;
+  page: WalletResearchPageInput;
   thread: ThreadSnapshot;
 }): string {
   const dominantVerdict = pickDominantVerdict(params.thread.verdictCounts);
@@ -489,7 +451,7 @@ function buildResearchQuery(params: {
 }
 
 function buildSearchKeywordQuery(params: {
-  page: StoredPage;
+  page: WalletResearchPageInput;
   thread: ThreadSnapshot;
 }): string {
   const context = buildPageContextSummary({
@@ -511,7 +473,7 @@ function buildSearchKeywordQuery(params: {
 }
 
 function buildExtractionObjective(params: {
-  page: StoredPage;
+  page: WalletResearchPageInput;
   thread: ThreadSnapshot;
 }): string {
   return compactWhitespace(
@@ -525,42 +487,398 @@ function buildExtractionObjective(params: {
   );
 }
 
-function buildSocialSearchPhrase(params: {
-  page: StoredPage;
-}): string {
+function buildSocialSearchPhrase(params: { page: WalletResearchPageInput }): string {
   return truncate(params.page.title, 100);
 }
 
+function getPaymentResponseHeader(response: Response): string | null {
+  return response.headers.get("payment-response") ?? response.headers.get("x-payment-response");
+}
+
+type LiveExecutionResult = {
+  result: WalletResearchResult;
+  paymentResponseHeader: string | null;
+};
+
+async function callStableEnrichAnswer(params: {
+  page: WalletResearchPageInput;
+  thread: ThreadSnapshot;
+  provider: WalletResearchProvider;
+  payFetch: WalletPaymentFetch;
+}): Promise<LiveExecutionResult | null> {
+  const query = buildResearchQuery(params);
+  const response = await params.payFetch("https://stableenrich.dev/api/exa/answer", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      query,
+      text: true
+    })
+  }).catch(() => null);
+
+  if (!response?.ok) return null;
+
+  const payload = (await response.json().catch(() => null)) as GenericRecord | null;
+  const answer = typeof payload?.answer === "string" ? compactWhitespace(payload.answer) : "";
+  if (!answer) return null;
+
+  const citationBullets = Array.isArray(payload?.citations)
+    ? payload.citations
+        .filter(isRecord)
+        .map((item) => {
+          if (typeof item.text === "string") return truncate(item.text, 220);
+          if (typeof item.title === "string") return compactWhitespace(item.title);
+          return "";
+        })
+        .filter(Boolean)
+        .slice(0, 4)
+    : [];
+
+  const citations = toCitationList(payload?.citations);
+
+  return {
+    paymentResponseHeader: getPaymentResponseHeader(response),
+    result: {
+      providerId: params.provider.id,
+      providerLabel: params.provider.label,
+      priceUsdCents: params.provider.priceUsdCents,
+      mode: "live",
+      query,
+      summary: truncate(answer, 220),
+      whyItMatters: answer,
+      bullets: citationBullets.length > 0 ? citationBullets : toTextBullets(answer),
+      citations:
+        citations.length > 0
+          ? citations
+          : [
+              {
+                label: "Source page",
+                url: params.page.canonicalUrl
+              }
+            ]
+    }
+  };
+}
+
+async function callStableEnrichSearch(params: {
+  page: WalletResearchPageInput;
+  thread: ThreadSnapshot;
+  provider: WalletResearchProvider;
+  payFetch: WalletPaymentFetch;
+}): Promise<LiveExecutionResult | null> {
+  const query = buildSearchKeywordQuery(params);
+  const objective = buildExtractionObjective(params);
+  const response = await params.payFetch("https://stableenrich.dev/api/exa/search", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      query,
+      numResults: 4,
+      type: "auto",
+      contents: {
+        highlights: {
+          query: objective,
+          numSentences: 2,
+          highlightsPerUrl: 1
+        },
+        summary: {
+          query: objective
+        }
+      }
+    })
+  }).catch(() => null);
+
+  if (!response?.ok) return null;
+
+  const payload = (await response.json().catch(() => null)) as GenericRecord | null;
+  const result = buildSearchLikeResult({
+    provider: params.provider,
+    query,
+    records: extractRecordArray(payload),
+    fallbackSummary: "StableEnrich found adjacent sources for this page.",
+    fallbackWhy:
+      "The surrounding web context is strong enough to help a verified human make a faster judgment.",
+    fallbackUrl: params.page.canonicalUrl
+  });
+
+  if (!result) return null;
+
+  return {
+    paymentResponseHeader: getPaymentResponseHeader(response),
+    result
+  };
+}
+
+async function callStableEnrichContents(params: {
+  page: WalletResearchPageInput;
+  thread: ThreadSnapshot;
+  provider: WalletResearchProvider;
+  payFetch: WalletPaymentFetch;
+}): Promise<LiveExecutionResult | null> {
+  const query = buildExtractionObjective(params);
+  const response = await params.payFetch("https://stableenrich.dev/api/exa/contents", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      urls: [params.page.canonicalUrl],
+      text: {
+        maxCharacters: 1800
+      },
+      highlights: {
+        query,
+        numSentences: 2,
+        highlightsPerUrl: 3
+      },
+      summary: {
+        query
+      },
+      livecrawl: "fallback"
+    })
+  }).catch(() => null);
+
+  if (!response?.ok) return null;
+
+  const payload = (await response.json().catch(() => null)) as GenericRecord | null;
+  const result = buildSearchLikeResult({
+    provider: params.provider,
+    query,
+    records: extractRecordArray(payload),
+    fallbackSummary: "StableEnrich pulled the page contents directly.",
+    fallbackWhy: "This provider is best when the page itself matters more than the surrounding conversation.",
+    fallbackUrl: params.page.canonicalUrl
+  });
+
+  if (!result) return null;
+
+  return {
+    paymentResponseHeader: getPaymentResponseHeader(response),
+    result
+  };
+}
+
+async function callAnybrowseScrape(params: {
+  page: WalletResearchPageInput;
+  thread: ThreadSnapshot;
+  provider: WalletResearchProvider;
+  payFetch: WalletPaymentFetch;
+}): Promise<LiveExecutionResult | null> {
+  const query = buildExtractionObjective(params);
+  const response = await params.payFetch("https://anybrowse.dev/scrape", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      url: params.page.canonicalUrl
+    })
+  }).catch(() => null);
+
+  if (!response?.ok) return null;
+
+  const payload = (await response.json().catch(() => null)) as GenericRecord | null;
+  const markdown =
+    typeof payload?.markdown === "string"
+      ? payload.markdown
+      : typeof payload?.content === "string"
+        ? payload.content
+        : "";
+  if (!markdown) return null;
+
+  const bullets = toTextBullets(markdown);
+  const summary =
+    bullets[0] ?? "anybrowse scraped this page into a cleaner markdown view for research.";
+  const whyItMatters = bullets[1] ?? truncate(stripMarkdown(markdown), 320);
+  const citationUrl =
+    typeof payload?.url === "string" && payload.url.startsWith("http")
+      ? payload.url
+      : params.page.canonicalUrl;
+
+  return {
+    paymentResponseHeader: getPaymentResponseHeader(response),
+    result: {
+      providerId: params.provider.id,
+      providerLabel: params.provider.label,
+      priceUsdCents: params.provider.priceUsdCents,
+      mode: "live",
+      query,
+      summary,
+      whyItMatters,
+      bullets: bullets.length > 0 ? bullets : ["Scraped " + params.page.canonicalUrl],
+      citations: [
+        {
+          label: typeof payload?.title === "string" ? payload.title : "Source page",
+          url: citationUrl
+        }
+      ]
+    }
+  };
+}
+
+async function callStableClaudeRun(params: {
+  page: WalletResearchPageInput;
+  thread: ThreadSnapshot;
+  provider: WalletResearchProvider;
+  payFetch: WalletPaymentFetch;
+}): Promise<LiveExecutionResult | null> {
+  const query = buildResearchQuery(params);
+  const response = await params.payFetch("https://stableclaude.dev/api/start", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      prompt: query,
+      tier: "$1.00"
+    })
+  }).catch(() => null);
+
+  if (!response?.ok) return null;
+
+  const payload = (await response.json().catch(() => null)) as GenericRecord | null;
+  const runId = typeof payload?.runId === "string" ? payload.runId : "";
+  const status = typeof payload?.status === "string" ? payload.status : "running";
+  if (!runId) return null;
+
+  return {
+    paymentResponseHeader: getPaymentResponseHeader(response),
+    result: {
+      providerId: params.provider.id,
+      providerLabel: params.provider.label,
+      priceUsdCents: params.provider.priceUsdCents,
+      mode: "live",
+      query,
+      summary: "Started a deep async Giga run for this page.",
+      whyItMatters:
+        "This is the heavyweight path when a page needs a longer agent-style run instead of a fast browse result.",
+      bullets: [
+        "Run " + runId + " is currently " + status + ".",
+        "Tier: $1.00 on StableClaude / Giga.",
+        "Use this when you want a deeper async pass rather than a quick search answer."
+      ],
+      citations: [
+        {
+          label: "Giga API",
+          url: "https://stableclaude.dev"
+        },
+        {
+          label: "Source page",
+          url: params.page.canonicalUrl
+        }
+      ]
+    }
+  };
+}
+
+async function callTwitshSearch(params: {
+  page: WalletResearchPageInput;
+  thread: ThreadSnapshot;
+  provider: WalletResearchProvider;
+  payFetch: WalletPaymentFetch;
+}): Promise<LiveExecutionResult | null> {
+  const phrase = buildSocialSearchPhrase(params);
+  const requestUrl = new URL("https://twit.sh/tweets/search");
+  requestUrl.searchParams.set("phrase", phrase);
+  requestUrl.searchParams.set("minLikes", "3");
+
+  const response = await params.payFetch(requestUrl, {
+    method: "GET"
+  }).catch(() => null);
+
+  if (!response?.ok) return null;
+
+  const payload = (await response.json().catch(() => null)) as GenericRecord | null;
+  const records = extractRecordArray(payload);
+  const snippets = records
+    .map((record) => {
+      const text = typeof record.text === "string" ? compactWhitespace(record.text) : "";
+      if (!text) return "";
+
+      const author =
+        typeof record.username === "string"
+          ? "@" + record.username + ": "
+          : typeof record.author_username === "string"
+            ? "@" + record.author_username + ": "
+            : "";
+
+      return truncate(author + text, 220);
+    })
+    .filter(Boolean)
+    .slice(0, 4);
+
+  if (snippets.length === 0) {
+    return null;
+  }
+
+  const citations = records
+    .map((record, index) => getRecordCitation(record, index))
+    .filter((item): item is { label: string; url: string } => Boolean(item))
+    .slice(0, 5);
+
+  return {
+    paymentResponseHeader: getPaymentResponseHeader(response),
+    result: {
+      providerId: params.provider.id,
+      providerLabel: params.provider.label,
+      priceUsdCents: params.provider.priceUsdCents,
+      mode: "live",
+      query: phrase,
+      summary: snippets[0],
+      whyItMatters:
+        snippets[1] ??
+        "twit.sh found live X/Twitter conversation around this page title, which is useful for market and launch context.",
+      bullets: snippets,
+      citations:
+        citations.length > 0
+          ? citations
+          : [
+              {
+                label: "twit.sh",
+                url: "https://twit.sh"
+              }
+            ]
+    }
+  };
+}
+
 export function getWalletResearchProviders(): WalletResearchProvider[] {
-  return Object.values(providers);
+  return Object.values(providers).filter((provider) => !provider.hidden);
 }
 
 export function getWalletResearchProvider(providerId: ManagedWalletProviderId): WalletResearchProvider {
   return providers[providerId];
 }
 
-export function isWalletResearchProviderConfigured(providerId: ManagedWalletProviderId): boolean {
-  if (providerId === "exa") {
-    return Boolean(process.env.EXA_API_KEY?.trim());
-  }
+export function supportsClientWalletPayments(providerId: ManagedWalletProviderId): boolean {
+  return providers[providerId].executionMode === "wallet_signed_x402";
+}
 
-  if (providerId === "perplexity") {
-    return Boolean(process.env.PERPLEXITY_API_KEY?.trim());
-  }
+export function createClientWalletPaymentFetch(params: ClientWalletPaymentContext): WalletPaymentFetch {
+  const signer = toClientEvmSigner(
+    {
+      address: params.address,
+      signTypedData: (message) => params.signTypedData(message)
+    },
+    params.publicClient
+  );
 
-  if (providerId === "opus_46") {
-    return Boolean(process.env.ANTHROPIC_API_KEY?.trim());
-  }
-
-  if (providerId === "parallel_search") {
-    return Boolean(getParallelPaymentFetch());
-  }
-
-  return Boolean(getX402PaymentFetch());
+  return wrapFetchWithPaymentFromConfig(fetch, {
+    schemes: [
+      {
+        network: params.network ?? "eip155:8453",
+        client: new ExactEvmScheme(signer)
+      }
+    ]
+  });
 }
 
 export function buildWalletResearchPreview(params: {
-  page: StoredPage;
+  page: WalletResearchPageInput;
   thread: ThreadSnapshot;
   providerId: ManagedWalletProviderId;
 }): WalletResearchResult {
@@ -620,679 +938,92 @@ export function buildWalletResearchPreview(params: {
   };
 }
 
-async function callExaResearch(params: {
-  page: StoredPage;
-  thread: ThreadSnapshot;
-  provider: WalletResearchProvider;
-}): Promise<WalletResearchResult | null> {
-  const apiKey = process.env.EXA_API_KEY?.trim();
-  if (!apiKey) return null;
-
-  const query = buildResearchQuery(params);
-  const response = await fetch(process.env.EXA_API_URL ?? "https://api.exa.ai/search", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": apiKey
-    },
-    body: JSON.stringify({
-      query,
-      numResults: 4,
-      useAutoprompt: true,
-      text: true
-    })
-  }).catch(() => null);
-
-  if (!response?.ok) {
-    return null;
-  }
-
-  const payload = (await response.json().catch(() => null)) as
-    | {
-        results?: Array<{
-          title?: string;
-          url?: string;
-          text?: string;
-          highlights?: string[];
-        }>;
-      }
-    | null;
-
-  const results = Array.isArray(payload?.results) ? payload.results : [];
-  if (results.length === 0) return null;
-
-  const bullets = results
-    .map((item) => {
-      if (Array.isArray(item.highlights) && typeof item.highlights[0] === "string") {
-        return compactWhitespace(item.highlights[0]);
-      }
-
-      return typeof item.text === "string" ? compactWhitespace(item.text).slice(0, 220) : "";
-    })
-    .filter(Boolean)
-    .slice(0, 4);
-
-  return {
-    providerId: params.provider.id,
-    providerLabel: params.provider.label,
-    priceUsdCents: params.provider.priceUsdCents,
-    mode: "live",
-    query,
-    summary: bullets[0] ?? "Exa found adjacent context for this page.",
-    whyItMatters:
-      bullets[1] ??
-      "This page has enough external context that a verified-human researcher can make a faster call.",
-    bullets: bullets.length > 0 ? bullets : ["Exa found related context for this page."],
-    citations: results
-      .map((item, index) => {
-        if (!item.url) return null;
-        return {
-          label: item.title ?? "Source " + String(index + 1),
-          url: item.url
-        };
-      })
-      .filter((item): item is { label: string; url: string } => Boolean(item))
-      .slice(0, 5)
-  };
-}
-
-async function callPerplexityResearch(params: {
-  page: StoredPage;
-  thread: ThreadSnapshot;
-  provider: WalletResearchProvider;
-}): Promise<WalletResearchResult | null> {
-  const apiKey = process.env.PERPLEXITY_API_KEY?.trim();
-  if (!apiKey) return null;
-
-  const query = buildResearchQuery(params);
-  const response = await fetch(
-    process.env.PERPLEXITY_API_URL ?? "https://api.perplexity.ai/chat/completions",
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: "Bearer " + apiKey
-      },
-      body: JSON.stringify({
-        model: process.env.PERPLEXITY_MODEL ?? "sonar-pro",
-        temperature: 0.1,
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a research assistant. Return strict JSON with keys summary, whyItMatters, bullets, citations."
-          },
-          {
-            role: "user",
-            content: query
-          }
-        ]
-      })
-    }
-  ).catch(() => null);
-
-  if (!response?.ok) return null;
-
-  const payload = (await response.json().catch(() => null)) as PerplexityResponse | null;
-  const content =
-    typeof payload?.choices?.[0]?.message?.content === "string"
-      ? payload.choices[0].message.content
-      : "";
-
-  if (!content) return null;
-
-  return deriveStructuredResult({
-    provider: params.provider,
-    query,
-    rawText: content,
-    citations: toCitationList(payload?.citations)
-  });
-}
-
-async function callAnthropicResearch(params: {
-  page: StoredPage;
-  thread: ThreadSnapshot;
-  provider: WalletResearchProvider;
-}): Promise<WalletResearchResult | null> {
-  const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
-  if (!apiKey) return null;
-
-  const query = buildResearchQuery(params);
-  const response = await fetch(
-    process.env.ANTHROPIC_API_URL ?? "https://api.anthropic.com/v1/messages",
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01"
-      },
-      body: JSON.stringify({
-        model: process.env.ANTHROPIC_MODEL ?? "claude-opus-4-20250514",
-        max_tokens: 700,
-        temperature: 0.1,
-        system:
-          "Return strict JSON with keys summary, whyItMatters, bullets, citations. Citations can be an empty array if none are available.",
-        messages: [
-          {
-            role: "user",
-            content: query
-          }
-        ]
-      })
-    }
-  ).catch(() => null);
-
-  if (!response?.ok) return null;
-
-  const payload = (await response.json().catch(() => null)) as AnthropicResponse | null;
-  const content = Array.isArray(payload?.content)
-    ? payload.content
-        .filter((item) => item?.type === "text" && typeof item.text === "string")
-        .map((item) => item.text as string)
-        .join("\n")
-    : "";
-
-  if (!content) return null;
-
-  return deriveStructuredResult({
-    provider: params.provider,
-    query,
-    rawText: content,
-    citations: []
-  });
-}
-
-async function callStableEnrichAnswer(params: {
-  page: StoredPage;
-  thread: ThreadSnapshot;
-  provider: WalletResearchProvider;
-}): Promise<WalletResearchResult | null> {
-  const payFetch = getX402PaymentFetch();
-  if (!payFetch) return null;
-
-  const query = buildResearchQuery(params);
-  const response = await payFetch("https://stableenrich.dev/api/exa/answer", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json"
-    },
-    body: JSON.stringify({
-      query,
-      text: true
-    })
-  }).catch(() => null);
-
-  if (!response?.ok) return null;
-
-  const payload = (await response.json().catch(() => null)) as GenericRecord | null;
-  const answer = typeof payload?.answer === "string" ? compactWhitespace(payload.answer) : "";
-  if (!answer) return null;
-
-  const citationBullets = Array.isArray(payload?.citations)
-    ? payload.citations
-        .filter(isRecord)
-        .map((item) => {
-          if (typeof item.text === "string") return truncate(item.text, 220);
-          if (typeof item.title === "string") return compactWhitespace(item.title);
-          return "";
-        })
-        .filter(Boolean)
-        .slice(0, 4)
-    : [];
-
-  const citations = toCitationList(payload?.citations);
-
-  return {
-    providerId: params.provider.id,
-    providerLabel: params.provider.label,
-    priceUsdCents: params.provider.priceUsdCents,
-    mode: "live",
-    query,
-    summary: truncate(answer, 220),
-    whyItMatters: answer,
-    bullets: citationBullets.length > 0 ? citationBullets : toTextBullets(answer),
-    citations:
-      citations.length > 0
-        ? citations
-        : [
-            {
-              label: "Source page",
-              url: params.page.canonicalUrl
-            }
-          ]
-  };
-}
-
-async function callStableEnrichSearch(params: {
-  page: StoredPage;
-  thread: ThreadSnapshot;
-  provider: WalletResearchProvider;
-}): Promise<WalletResearchResult | null> {
-  const payFetch = getX402PaymentFetch();
-  if (!payFetch) return null;
-
-  const query = buildSearchKeywordQuery(params);
-  const objective = buildExtractionObjective(params);
-  const response = await payFetch("https://stableenrich.dev/api/exa/search", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json"
-    },
-    body: JSON.stringify({
-      query,
-      numResults: 4,
-      type: "auto",
-      contents: {
-        highlights: {
-          query: objective,
-          numSentences: 2,
-          highlightsPerUrl: 1
-        },
-        summary: {
-          query: objective
-        }
-      }
-    })
-  }).catch(() => null);
-
-  if (!response?.ok) return null;
-
-  const payload = (await response.json().catch(() => null)) as GenericRecord | null;
-  return buildSearchLikeResult({
-    provider: params.provider,
-    query,
-    records: extractRecordArray(payload),
-    fallbackSummary: "StableEnrich found adjacent sources for this page.",
-    fallbackWhy: "The surrounding web context is strong enough to help a verified human make a faster judgment.",
-    fallbackUrl: params.page.canonicalUrl
-  });
-}
-
-async function callStableEnrichContents(params: {
-  page: StoredPage;
-  thread: ThreadSnapshot;
-  provider: WalletResearchProvider;
-}): Promise<WalletResearchResult | null> {
-  const payFetch = getX402PaymentFetch();
-  if (!payFetch) return null;
-
-  const query = buildExtractionObjective(params);
-  const response = await payFetch("https://stableenrich.dev/api/exa/contents", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json"
-    },
-    body: JSON.stringify({
-      urls: [params.page.canonicalUrl],
-      text: {
-        maxCharacters: 1800
-      },
-      highlights: {
-        query,
-        numSentences: 2,
-        highlightsPerUrl: 3
-      },
-      summary: {
-        query
-      },
-      livecrawl: "fallback"
-    })
-  }).catch(() => null);
-
-  if (!response?.ok) return null;
-
-  const payload = (await response.json().catch(() => null)) as GenericRecord | null;
-  return buildSearchLikeResult({
-    provider: params.provider,
-    query,
-    records: extractRecordArray(payload),
-    fallbackSummary: "StableEnrich pulled the page contents directly.",
-    fallbackWhy: "This provider is best when the page itself matters more than the surrounding conversation.",
-    fallbackUrl: params.page.canonicalUrl
-  });
-}
-
-async function callAnybrowseScrape(params: {
-  page: StoredPage;
-  thread: ThreadSnapshot;
-  provider: WalletResearchProvider;
-}): Promise<WalletResearchResult | null> {
-  const payFetch = getX402PaymentFetch();
-  if (!payFetch) return null;
-
-  const query = buildExtractionObjective(params);
-  const response = await payFetch("https://anybrowse.dev/scrape", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json"
-    },
-    body: JSON.stringify({
-      url: params.page.canonicalUrl
-    })
-  }).catch(() => null);
-
-  if (!response?.ok) return null;
-
-  const payload = (await response.json().catch(() => null)) as GenericRecord | null;
-  const markdown =
-    typeof payload?.markdown === "string"
-      ? payload.markdown
-      : typeof payload?.content === "string"
-        ? payload.content
-        : "";
-  if (!markdown) return null;
-
-  const bullets = toTextBullets(markdown);
-  const summary =
-    bullets[0] ?? "anybrowse scraped this page into a cleaner markdown view for research.";
-  const whyItMatters = bullets[1] ?? truncate(stripMarkdown(markdown), 320);
-  const citationUrl =
-    typeof payload?.url === "string" && payload.url.startsWith("http")
-      ? payload.url
-      : params.page.canonicalUrl;
-
-  return {
-    providerId: params.provider.id,
-    providerLabel: params.provider.label,
-    priceUsdCents: params.provider.priceUsdCents,
-    mode: "live",
-    query,
-    summary,
-    whyItMatters,
-    bullets: bullets.length > 0 ? bullets : ["Scraped " + params.page.canonicalUrl],
-    citations: [
-      {
-        label: typeof payload?.title === "string" ? payload.title : "Source page",
-        url: citationUrl
-      }
-    ]
-  };
-}
-
-async function callStableClaudeRun(params: {
-  page: StoredPage;
-  thread: ThreadSnapshot;
-  provider: WalletResearchProvider;
-}): Promise<WalletResearchResult | null> {
-  const payFetch = getX402PaymentFetch();
-  if (!payFetch) return null;
-
-  const query = buildResearchQuery(params);
-  const response = await payFetch("https://stableclaude.dev/api/start", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json"
-    },
-    body: JSON.stringify({
-      prompt: query,
-      tier: "$1.00"
-    })
-  }).catch(() => null);
-
-  if (!response?.ok) return null;
-
-  const payload = (await response.json().catch(() => null)) as GenericRecord | null;
-  const runId = typeof payload?.runId === "string" ? payload.runId : "";
-  const status = typeof payload?.status === "string" ? payload.status : "running";
-  if (!runId) return null;
-
-  return {
-    providerId: params.provider.id,
-    providerLabel: params.provider.label,
-    priceUsdCents: params.provider.priceUsdCents,
-    mode: "live",
-    query,
-    summary: "Started a deep async Giga run for this page.",
-    whyItMatters:
-      "This is the heavyweight path when a page needs a longer agent-style run instead of a fast browse result.",
-    bullets: [
-      "Run " + runId + " is currently " + status + ".",
-      "Tier: $1.00 on StableClaude / Giga.",
-      "Use this when you want a deeper async pass rather than a quick search answer."
-    ],
-    citations: [
-      {
-        label: "Giga API",
-        url: "https://stableclaude.dev"
-      },
-      {
-        label: "Source page",
-        url: params.page.canonicalUrl
-      }
-    ]
-  };
-}
-
-async function callParallelSearch(params: {
-  page: StoredPage;
-  thread: ThreadSnapshot;
-  provider: WalletResearchProvider;
-}): Promise<WalletResearchResult | null> {
-  const payFetch = getParallelPaymentFetch();
-  if (!payFetch) return null;
-
-  const query = buildSearchKeywordQuery(params);
-  const response = await payFetch("https://parallelmpp.dev/api/search", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json"
-    },
-    body: JSON.stringify({
-      query,
-      mode: "one-shot"
-    })
-  }).catch(() => null);
-
-  if (!response?.ok) return null;
-
-  const payload = (await response.json().catch(() => null)) as GenericRecord | null;
-  const recordResult = buildSearchLikeResult({
-    provider: params.provider,
-    query,
-    records: extractRecordArray(payload),
-    fallbackSummary: "Parallel search found structured results for this page.",
-    fallbackWhy: "This is a good retrieval-heavy option when you want broader search context quickly.",
-    fallbackUrl: "https://parallelmpp.dev"
-  });
-
-  if (recordResult) {
-    return recordResult;
-  }
-
-  const fallbackText =
-    typeof payload?.summary === "string"
-      ? payload.summary
-      : typeof payload?.answer === "string"
-        ? payload.answer
-        : typeof payload?.context === "string"
-          ? payload.context
-          : "";
-
-  if (!fallbackText) return null;
-
-  return {
-    providerId: params.provider.id,
-    providerLabel: params.provider.label,
-    priceUsdCents: params.provider.priceUsdCents,
-    mode: "live",
-    query,
-    summary: truncate(fallbackText, 220),
-    whyItMatters: compactWhitespace(fallbackText),
-    bullets: toTextBullets(fallbackText),
-    citations: [
-      {
-        label: "Parallel Search",
-        url: "https://parallelmpp.dev"
-      }
-    ]
-  };
-}
-
-async function callTwitshSearch(params: {
-  page: StoredPage;
-  thread: ThreadSnapshot;
-  provider: WalletResearchProvider;
-}): Promise<WalletResearchResult | null> {
-  const payFetch = getX402PaymentFetch();
-  if (!payFetch) return null;
-
-  const phrase = buildSocialSearchPhrase(params);
-  const requestUrl = new URL("https://twit.sh/tweets/search");
-  requestUrl.searchParams.set("phrase", phrase);
-  requestUrl.searchParams.set("minLikes", "3");
-
-  const response = await payFetch(requestUrl, {
-    method: "GET"
-  }).catch(() => null);
-
-  if (!response?.ok) return null;
-
-  const payload = (await response.json().catch(() => null)) as GenericRecord | null;
-  const records = extractRecordArray(payload);
-  const snippets = records
-    .map((record) => {
-      const text = typeof record.text === "string" ? compactWhitespace(record.text) : "";
-      if (!text) return "";
-
-      const author =
-        typeof record.username === "string"
-          ? "@" + record.username + ": "
-          : typeof record.author_username === "string"
-            ? "@" + record.author_username + ": "
-            : "";
-
-      return truncate(author + text, 220);
-    })
-    .filter(Boolean)
-    .slice(0, 4);
-
-  if (snippets.length === 0) {
-    return null;
-  }
-
-  const citations = records
-    .map((record, index) => getRecordCitation(record, index))
-    .filter((item): item is { label: string; url: string } => Boolean(item))
-    .slice(0, 5);
-
-  return {
-    providerId: params.provider.id,
-    providerLabel: params.provider.label,
-    priceUsdCents: params.provider.priceUsdCents,
-    mode: "live",
-    query: phrase,
-    summary: snippets[0],
-    whyItMatters:
-      snippets[1] ??
-      "twit.sh found live X/Twitter conversation around this page title, which is useful for market and launch context.",
-    bullets: snippets,
-    citations:
-      citations.length > 0
-        ? citations
-        : [
-            {
-              label: "twit.sh",
-              url: "https://twit.sh"
-            }
-          ]
-  };
-}
-
-export async function runWalletResearch(params: {
-  page: StoredPage;
+export async function runClientWalletResearch(params: {
+  page: WalletResearchPageInput;
   thread: ThreadSnapshot;
   providerId: ManagedWalletProviderId;
-}): Promise<WalletResearchRun> {
+  paymentFetch?: WalletPaymentFetch | null;
+}): Promise<WalletResearchExecution> {
   const provider = getWalletResearchProvider(params.providerId);
   const preview = buildWalletResearchPreview(params);
 
-  let liveResult: WalletResearchResult | null = null;
+  if (provider.executionMode !== "wallet_signed_x402" || !params.paymentFetch) {
+    return {
+      result: preview,
+      chargedUsdCents: 0,
+      paymentRail: "preview",
+      paymentResponseHeader: null
+    };
+  }
+
+  let liveResult: LiveExecutionResult | null = null;
 
   switch (params.providerId) {
-    case "exa":
-      liveResult = await callExaResearch({
-        page: params.page,
-        thread: params.thread,
-        provider
-      });
-      break;
-    case "perplexity":
-      liveResult = await callPerplexityResearch({
-        page: params.page,
-        thread: params.thread,
-        provider
-      });
-      break;
-    case "opus_46":
-      liveResult = await callAnthropicResearch({
-        page: params.page,
-        thread: params.thread,
-        provider
-      });
-      break;
     case "stableenrich_answer":
       liveResult = await callStableEnrichAnswer({
         page: params.page,
         thread: params.thread,
-        provider
+        provider,
+        payFetch: params.paymentFetch
       });
       break;
     case "stableenrich_search":
       liveResult = await callStableEnrichSearch({
         page: params.page,
         thread: params.thread,
-        provider
+        provider,
+        payFetch: params.paymentFetch
       });
       break;
     case "stableenrich_contents":
       liveResult = await callStableEnrichContents({
         page: params.page,
         thread: params.thread,
-        provider
+        provider,
+        payFetch: params.paymentFetch
       });
       break;
     case "anybrowse_scrape":
       liveResult = await callAnybrowseScrape({
         page: params.page,
         thread: params.thread,
-        provider
+        provider,
+        payFetch: params.paymentFetch
       });
       break;
     case "stableclaude_giga":
       liveResult = await callStableClaudeRun({
         page: params.page,
         thread: params.thread,
-        provider
-      });
-      break;
-    case "parallel_search":
-      liveResult = await callParallelSearch({
-        page: params.page,
-        thread: params.thread,
-        provider
+        provider,
+        payFetch: params.paymentFetch
       });
       break;
     case "twitsh_search":
       liveResult = await callTwitshSearch({
         page: params.page,
         thread: params.thread,
-        provider
+        provider,
+        payFetch: params.paymentFetch
       });
       break;
+    default:
+      liveResult = null;
   }
 
   if (liveResult) {
     return {
-      result: liveResult,
+      result: liveResult.result,
       chargedUsdCents: provider.priceUsdCents,
-      providerConfigured: true
+      paymentRail: "wallet_signed_x402",
+      paymentResponseHeader: liveResult.paymentResponseHeader
     };
   }
 
   return {
     result: preview,
     chargedUsdCents: 0,
-    providerConfigured: isWalletResearchProviderConfigured(params.providerId)
+    paymentRail: "preview",
+    paymentResponseHeader: null
   };
 }

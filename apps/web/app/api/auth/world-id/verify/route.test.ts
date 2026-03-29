@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   createSessionForProfile: vi.fn(),
-  ensureManagedWalletForProfile: vi.fn(),
   upsertVerifiedProfile: vi.fn(),
   verifyWorldIdSubmission: vi.fn()
 }));
@@ -14,7 +13,6 @@ vi.mock("@human-layer/db", async () => {
   return {
     ...actual,
     createSessionForProfile: mocks.createSessionForProfile,
-    ensureManagedWalletForProfile: mocks.ensureManagedWalletForProfile,
     upsertVerifiedProfile: mocks.upsertVerifiedProfile
   };
 });
@@ -36,9 +34,6 @@ import { HandleTakenError } from "@human-layer/db";
 describe("POST /api/auth/world-id/verify", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.ensureManagedWalletForProfile.mockResolvedValue({
-      walletId: "wallet-1"
-    });
   });
 
   it("validates the handle format", async () => {
@@ -140,10 +135,6 @@ describe("POST /api/auth/world-id/verify", () => {
       interestTags: ["devtools", "research"],
       verificationLevel: "orb",
       signal: "human-layer-v1"
-    });
-    expect(mocks.ensureManagedWalletForProfile).toHaveBeenCalledWith({
-      profileId: "profile-1",
-      handle: "signal_builder"
     });
     expect(response.status).toBe(200);
     expect(response.headers.get("set-cookie")).toContain("hl_session=session-token");
