@@ -60,6 +60,9 @@ export default async function SupportPage(props: {
           <Link className="button" href="/verify">
             Open verification
           </Link>
+          <Link className="button secondary" href="/integrations">
+            Propose integration
+          </Link>
           <Link className="button secondary" href="/privacy">
             Privacy policy
           </Link>
@@ -75,6 +78,19 @@ export default async function SupportPage(props: {
           If you are preparing a Chrome Web Store submission, use this page as the support URL and
           the privacy page as the privacy-policy URL until you move to a custom domain.
         </p>
+      </section>
+
+      <section className="card stack">
+        <h2>Suggest A New Surface</h2>
+        <p className="muted">
+          If you want Human Layer on a new website, plugin marketplace, or media surface, the
+          fastest path is a GitHub pull request. Docs-only proposals are welcome.
+        </p>
+        <div className="chip-row">
+          <Link className="button secondary" href="/integrations">
+            Open integration guide
+          </Link>
+        </div>
       </section>
     </div>
   );

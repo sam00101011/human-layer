@@ -36,6 +36,7 @@ Deployment and production setup:
 - `LAUNCH-GUARDRAILS.md`
 - `PRODUCTION-RELEASE-CHECKLIST.md`
 - `CHROME-WEB-STORE-BETA.md`
+- `INTEGRATION-CONTRIBUTING.md`
 - `PROVIDER-SETUP.md`
 - `apps/web/.env.production.example`
 - `apps/web/.env.staging.example`
