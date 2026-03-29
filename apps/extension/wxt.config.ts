@@ -2,6 +2,10 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "wxt";
 
 const appUrl = process.env.APP_URL ?? process.env.WXT_APP_URL ?? "http://127.0.0.1:3000";
+const appOriginPermission = (() => {
+  const url = new URL(appUrl);
+  return `${url.protocol}//${url.host}/*`;
+})();
 
 export default defineConfig({
   dev: {
@@ -14,10 +18,10 @@ export default defineConfig({
   manifest: {
     name: "Human Layer",
     short_name: "Human Layer",
-    description: "Verified-human context for GitHub and Hacker News",
+    description: "Verified-human context for supported web pages",
     homepage_url: appUrl,
     permissions: ["storage"],
-    host_permissions: ["http://*/*", "https://*/*"],
+    host_permissions: [appOriginPermission],
     icons: {
       16: "icons/icon-16.png",
       32: "icons/icon-32.png",
