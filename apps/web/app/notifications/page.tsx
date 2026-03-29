@@ -1,10 +1,12 @@
 import Link from "next/link";
 import {
   getFollowedProfileActivity,
+  getFollowedTopicsForProfile,
   getNotificationPreferencesForProfile,
   getNotificationsForProfile,
   getUnreadNotificationCount
 } from "@human-layer/db";
+import { getInterestTagLabel, type InterestTag } from "@human-layer/core";
 
 import { HelpfulButton } from "../../components/helpful-button";
 import { MarkNotificationsReadButton } from "../../components/mark-notifications-read-button";
@@ -30,8 +32,10 @@ function getReputationBadgeClass(level: string | undefined) {
   return `reputation-badge reputation-badge--${level}`;
 }
 
-function formatNotificationSource(source: "bookmarked_page" | "followed_profile") {
-  return source === "bookmarked_page" ? "Bookmarked page" : "Following";
+function formatNotificationSource(source: "bookmarked_page" | "followed_profile" | "followed_topic") {
+  if (source === "bookmarked_page") return "Bookmarked page";
+  if (source === "followed_topic") return "Following topic";
+  return "Following";
 }
 
 export default async function NotificationsPage() {
@@ -56,11 +60,12 @@ export default async function NotificationsPage() {
     );
   }
 
-  const [notifications, unreadCount, followedFeed, preferences] = await Promise.all([
+  const [notifications, unreadCount, followedFeed, preferences, followedTopics] = await Promise.all([
     getNotificationsForProfile(viewer.id, 50),
     getUnreadNotificationCount(viewer.id),
     getFollowedProfileActivity(viewer.id, 12),
-    getNotificationPreferencesForProfile(viewer.id)
+    getNotificationPreferencesForProfile(viewer.id),
+    getFollowedTopicsForProfile(viewer.id)
   ]);
 
   return (
@@ -74,7 +79,7 @@ export default async function NotificationsPage() {
             </div>
             <h1>Keep up with the pages and people you care about</h1>
             <p className="muted">
-              Human Layer now tracks two live graphs for you: new takes from people you follow, and new comments landing on pages you bookmarked.
+              Human Layer now tracks three live graphs for you: new takes from people you follow, fresh activity on bookmarked pages, and topic-specific signal across the interests you chose to follow.
             </p>
           </div>
           <div className="metric-grid compact-grid">
@@ -99,13 +104,28 @@ export default async function NotificationsPage() {
         <NotificationPreferencesForm
           initialBookmarkedPageComments={preferences.bookmarkedPageComments}
           initialFollowedProfileTakes={preferences.followedProfileTakes}
+          initialFollowedTopicTakes={preferences.followedTopicTakes}
         />
+        {followedTopics.length > 0 ? (
+          <div className="stack compact">
+            <span className="eyebrow">Following topics</span>
+            <div className="chip-row">
+              {followedTopics.map((topic) => (
+                <Link className="chip" href={`/topics/${topic}`} key={topic}>
+                  {getInterestTagLabel(topic as InterestTag)}
+                </Link>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p className="muted">You are not following any topics yet. Follow a topic to get a recurring signal layer beyond individual pages and people.</p>
+        )}
       </section>
 
       <section className="card stack">
         <div className="section-header">
           <h2>Latest notifications</h2>
-          <span className="muted">Comments on bookmarked pages and new takes from followed people.</span>
+          <span className="muted">Comments on bookmarked pages, new takes from followed people, and topic signal from the human graph.</span>
         </div>
         {notifications.length === 0 ? (
           <p className="muted">No notification activity yet. Bookmark pages and follow a few people to start the feed.</p>

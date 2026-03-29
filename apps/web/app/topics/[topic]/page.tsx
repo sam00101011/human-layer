@@ -1,8 +1,14 @@
 import Link from "next/link";
 import { type InterestTag, INTEREST_TAGS, getInterestTagLabel } from "@human-layer/core";
-import { getTopicSurface } from "@human-layer/db";
+import {
+  getFollowedTopicsForProfile,
+  getRecentTakesForTopic,
+  getTopicFeedFromFollowedProfiles,
+  getTopicSurface
+} from "@human-layer/db";
 import { notFound } from "next/navigation";
 
+import { FollowTopicButton } from "../../../components/follow-topic-button";
 import { FollowProfileButton } from "../../../components/follow-profile-button";
 import { HelpfulButton } from "../../../components/helpful-button";
 import { getAuthenticatedProfileFromCookies } from "../../lib/auth";
@@ -35,20 +41,39 @@ export default async function TopicPage(props: {
   }
 
   const viewer = await getAuthenticatedProfileFromCookies();
-  const surface = await getTopicSurface(topic, 6);
+  const [surface, recentTakes, followedTopics, trustedTopicFeed] = await Promise.all([
+    getTopicSurface(topic, 6),
+    getRecentTakesForTopic(topic, 6),
+    viewer ? getFollowedTopicsForProfile(viewer.id) : Promise.resolve([]),
+    viewer ? getTopicFeedFromFollowedProfiles(viewer.id, topic, 6) : Promise.resolve([])
+  ]);
+  const isFollowingTopic = followedTopics.includes(topic);
 
   return (
     <div className="page-shell stack">
       <section className="card hero-card stack">
-        <div className="chip-row">
-          <span className="pill">Topic surface</span>
-          <Link className="inline-link" href="/topics">
-            Back to all topics
-          </Link>
-        </div>
-        <div className="stack compact">
-          <h1>{surface.label}</h1>
-          <p className="muted">{surface.description}</p>
+        <div className="hero-row">
+          <div className="stack compact">
+            <div className="chip-row">
+              <span className="pill">Topic surface</span>
+              <Link className="inline-link" href="/topics">
+                Back to all topics
+              </Link>
+            </div>
+            <div className="stack compact">
+              <h1>{surface.label}</h1>
+              <p className="muted">{surface.description}</p>
+            </div>
+          </div>
+          <div className="action-row">
+            {viewer ? (
+              <FollowTopicButton initialFollowing={isFollowingTopic} topic={topic} />
+            ) : (
+              <Link className="button" href={`/verify?returnUrl=/topics/${topic}`}>
+                Verify to follow topic
+              </Link>
+            )}
+          </div>
         </div>
         <div className="topic-stat-grid">
           <div className="stat-card">
@@ -56,8 +81,8 @@ export default async function TopicPage(props: {
             <span className="muted">Trending pages</span>
           </div>
           <div className="stat-card">
-            <strong>{surface.topTakes.length}</strong>
-            <span className="muted">Top takes</span>
+            <strong>{recentTakes.length}</strong>
+            <span className="muted">Recent takes</span>
           </div>
           <div className="stat-card">
             <strong>{surface.topContributors.length}</strong>
@@ -75,6 +100,93 @@ export default async function TopicPage(props: {
           </div>
         </div>
       </section>
+
+      <section className="card stack home-section">
+        <div className="section-header">
+          <h2>This week in {surface.label}</h2>
+          <span className="muted">The freshest verified takes currently clustering into this topic.</span>
+        </div>
+        {recentTakes.length === 0 ? (
+          <p className="muted">No fresh takes have landed in this topic yet.</p>
+        ) : (
+          <div className="discovery-grid">
+            {recentTakes.map((take) => (
+              <article className="discovery-card" key={take.commentId}>
+                <div className="chip-row">
+                  <span className="trust-badge">This week</span>
+                  {take.reputation ? (
+                    <span className={getReputationBadgeClass(take.reputation.level)}>
+                      {take.reputation.label}
+                    </span>
+                  ) : null}
+                  <Link className="inline-link" href={`/profiles/${take.profileHandle}`}>
+                    @{take.profileHandle}
+                  </Link>
+                </div>
+                <strong>{take.pageTitle}</strong>
+                <p>{take.body}</p>
+                <p className="muted">
+                  Helpful {take.helpfulCount} • {formatDate(take.createdAt)} • {formatPageKind(take.pageKind)}
+                </p>
+                <HelpfulButton commentId={take.commentId} initialCount={take.helpfulCount} />
+                <div className="link-row">
+                  <Link className="inline-link" href={`/pages/${take.pageId}`}>
+                    Open Human Layer page
+                  </Link>
+                  <Link className="inline-link" href={take.canonicalUrl} rel="noreferrer" target="_blank">
+                    Open source page
+                  </Link>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {viewer ? (
+        <section className="card stack home-section">
+          <div className="section-header">
+            <h2>From people you trust in {surface.label}</h2>
+            <span className="muted">New takes in this topic from the people you already chose to follow.</span>
+          </div>
+          {trustedTopicFeed.length === 0 ? (
+            <p className="muted">No one you follow has posted in this topic yet. Following the topic now will still keep the topic graph active.</p>
+          ) : (
+            <div className="discovery-grid">
+              {trustedTopicFeed.map((item) => (
+                <article className="discovery-card" key={item.commentId}>
+                  <div className="chip-row">
+                    <span className="trust-badge">People you trust</span>
+                    {item.authorReputation ? (
+                      <span className={getReputationBadgeClass(item.authorReputation.level)}>
+                        {item.authorReputation.label}
+                      </span>
+                    ) : null}
+                    <Link className="inline-link" href={`/profiles/${item.authorHandle}`}>
+                      @{item.authorHandle}
+                    </Link>
+                  </div>
+                  <strong>{item.pageTitle}</strong>
+                  <p className="muted">{item.reason}</p>
+                  <p>{item.body}</p>
+                  <p className="muted">
+                    Helpful {item.helpfulCount} • {formatDate(item.createdAt)} • {formatPageKind(item.pageKind)}
+                  </p>
+                  <HelpfulButton commentId={item.commentId} initialCount={item.helpfulCount} />
+                  <div className="link-row">
+                    <Link className="inline-link" href={`/pages/${item.pageId}`}>
+                      Open Human Layer page
+                    </Link>
+                    <Link className="inline-link" href={item.pageCanonicalUrl} rel="noreferrer" target="_blank">
+                      Open source page
+                    </Link>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      ) : null}
 
       <section className="card stack home-section">
         <div className="section-header">

@@ -5,16 +5,19 @@ import { useState } from "react";
 type NotificationPreferencesFormProps = {
   initialBookmarkedPageComments: boolean;
   initialFollowedProfileTakes: boolean;
+  initialFollowedTopicTakes: boolean;
 };
 
 export function NotificationPreferencesForm({
   initialBookmarkedPageComments,
-  initialFollowedProfileTakes
+  initialFollowedProfileTakes,
+  initialFollowedTopicTakes
 }: NotificationPreferencesFormProps) {
   const [bookmarkedPageComments, setBookmarkedPageComments] = useState(
     initialBookmarkedPageComments
   );
   const [followedProfileTakes, setFollowedProfileTakes] = useState(initialFollowedProfileTakes);
+  const [followedTopicTakes, setFollowedTopicTakes] = useState(initialFollowedTopicTakes);
   const [status, setStatus] = useState<"idle" | "submitting" | "saved">("idle");
   const [error, setError] = useState<string | null>(null);
 
@@ -33,7 +36,8 @@ export function NotificationPreferencesForm({
       },
       body: JSON.stringify({
         bookmarkedPageComments,
-        followedProfileTakes
+        followedProfileTakes,
+        followedTopicTakes
       })
     }).catch(() => null);
 
@@ -76,6 +80,17 @@ export function NotificationPreferencesForm({
         <span>
           <strong>New takes from followed people</strong>
           <span className="muted">Keep the follow graph active when people you follow publish new takes.</span>
+        </span>
+      </label>
+      <label className="toggle-card">
+        <input
+          checked={followedTopicTakes}
+          onChange={(event) => setFollowedTopicTakes(event.target.checked)}
+          type="checkbox"
+        />
+        <span>
+          <strong>New takes in followed topics</strong>
+          <span className="muted">Get notified when your topic graph lights up with fresh verified takes.</span>
         </span>
       </label>
       <div className="action-row">

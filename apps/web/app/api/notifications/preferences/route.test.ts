@@ -29,7 +29,8 @@ describe("POST /api/notifications/preferences", () => {
         method: "POST",
         body: JSON.stringify({
           bookmarkedPageComments: true,
-          followedProfileTakes: true
+          followedProfileTakes: true,
+          followedTopicTakes: true
         })
       })
     );
@@ -47,7 +48,8 @@ describe("POST /api/notifications/preferences", () => {
     });
     mocks.updateNotificationPreferences.mockResolvedValue({
       bookmarkedPageComments: false,
-      followedProfileTakes: true
+      followedProfileTakes: true,
+      followedTopicTakes: true
     });
 
     const response = await POST(
@@ -55,7 +57,8 @@ describe("POST /api/notifications/preferences", () => {
         method: "POST",
         body: JSON.stringify({
           bookmarkedPageComments: false,
-          followedProfileTakes: true
+          followedProfileTakes: true,
+          followedTopicTakes: true
         })
       })
     );
@@ -63,14 +66,16 @@ describe("POST /api/notifications/preferences", () => {
     expect(mocks.updateNotificationPreferences).toHaveBeenCalledWith({
       profileId: "profile-1",
       bookmarkedPageComments: false,
-      followedProfileTakes: true
+      followedProfileTakes: true,
+      followedTopicTakes: true
     });
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       ok: true,
       preferences: {
         bookmarkedPageComments: false,
-        followedProfileTakes: true
+        followedProfileTakes: true,
+        followedTopicTakes: true
       }
     });
   });

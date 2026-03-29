@@ -13,15 +13,17 @@ export async function POST(request: NextRequest) {
     | {
         bookmarkedPageComments?: boolean;
         followedProfileTakes?: boolean;
+        followedTopicTakes?: boolean;
       }
     | null;
 
   if (
     typeof body?.bookmarkedPageComments !== "boolean" ||
-    typeof body?.followedProfileTakes !== "boolean"
+    typeof body?.followedProfileTakes !== "boolean" ||
+    typeof body?.followedTopicTakes !== "boolean"
   ) {
     return NextResponse.json(
-      { error: "bookmarkedPageComments and followedProfileTakes are required" },
+      { error: "bookmarkedPageComments, followedProfileTakes, and followedTopicTakes are required" },
       { status: 400 }
     );
   }
@@ -29,7 +31,8 @@ export async function POST(request: NextRequest) {
   const preferences = await updateNotificationPreferences({
     profileId: viewer.id,
     bookmarkedPageComments: body.bookmarkedPageComments,
-    followedProfileTakes: body.followedProfileTakes
+    followedProfileTakes: body.followedProfileTakes,
+    followedTopicTakes: body.followedTopicTakes
   });
 
   return NextResponse.json({

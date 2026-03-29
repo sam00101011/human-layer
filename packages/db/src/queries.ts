@@ -38,6 +38,7 @@ import {
   saves,
   sessions,
   supportedDomains,
+  topicFollows,
   verdicts,
   worldIdVerifications
 } from "./schema";
@@ -63,7 +64,7 @@ export type BookmarkedPage = PageSummary & {
   savedAt: string;
 };
 
-export type NotificationSource = "bookmarked_page" | "followed_profile";
+export type NotificationSource = "bookmarked_page" | "followed_profile" | "followed_topic";
 
 export type NotificationItem = {
   commentId: string;
@@ -86,6 +87,7 @@ export type NotificationItem = {
 export type NotificationPreferences = {
   bookmarkedPageComments: boolean;
   followedProfileTakes: boolean;
+  followedTopicTakes: boolean;
 };
 
 export type FollowGraphItem = {
@@ -263,6 +265,87 @@ function hasInterestOverlap(candidateTags: readonly InterestTag[], clusterTags: 
 function countSharedInterestTags(candidateTags: readonly InterestTag[], clusterTags: readonly InterestTag[]): number {
   const cluster = new Set(clusterTags);
   return candidateTags.filter((tag) => cluster.has(tag)).length;
+}
+
+async function getTopicMatchMap(
+  profileId: string,
+  pageIds: string[]
+): Promise<Map<string, InterestTag[]>> {
+  const uniquePageIds = [...new Set(pageIds)];
+  if (uniquePageIds.length === 0) {
+    return new Map();
+  }
+
+  const followedTopics = await getFollowedTopicsForProfile(profileId);
+  if (followedTopics.length === 0) {
+    return new Map();
+  }
+
+  const pageMap = await getDiscoveryPagesByIds(uniquePageIds);
+
+  return new Map(
+    uniquePageIds.map((pageId) => {
+      const page = pageMap.get(pageId);
+      if (!page) {
+        return [pageId, []] as const;
+      }
+
+      const matches = followedTopics.filter((topic) =>
+        hasInterestOverlap(page.tags, buildInterestCluster(topic, 2))
+      );
+      return [pageId, matches] as const;
+    })
+  );
+}
+
+async function getRecentTakeCandidates(limit = 36): Promise<DiscoveryTake[]> {
+  const rows = await db
+    .select({
+      commentId: comments.id,
+      body: comments.body,
+      createdAt: comments.createdAt,
+      profileId: profiles.id,
+      profileHandle: profiles.handle,
+      pageId: pages.id,
+      pageKind: pages.pageKind,
+      pageTitle: pages.title,
+      canonicalUrl: pages.canonicalUrl,
+      helpfulCount: sql<number>`count(${commentHelpfulVotes.id})::int`
+    })
+    .from(comments)
+    .innerJoin(profiles, eq(profiles.id, comments.profileId))
+    .innerJoin(pages, eq(pages.id, comments.pageId))
+    .leftJoin(commentHelpfulVotes, eq(commentHelpfulVotes.commentId, comments.id))
+    .where(eq(comments.hidden, false))
+    .groupBy(
+      comments.id,
+      comments.body,
+      comments.createdAt,
+      profiles.id,
+      profiles.handle,
+      pages.id,
+      pages.pageKind,
+      pages.title,
+      pages.canonicalUrl
+    )
+    .orderBy(desc(comments.createdAt))
+    .limit(Math.max(limit * 3, 36));
+
+  const reputationMap = await getContributorReputationMap(rows.map((row) => row.profileId));
+
+  return rows.map((row) => ({
+    commentId: row.commentId,
+    body: row.body,
+    createdAt: row.createdAt.toISOString(),
+    helpfulCount: row.helpfulCount,
+    profileId: row.profileId,
+    profileHandle: row.profileHandle,
+    pageId: row.pageId,
+    pageKind: row.pageKind as PageSummary["pageKind"],
+    pageTitle: row.pageTitle,
+    canonicalUrl: row.canonicalUrl,
+    reputation: reputationMap.get(row.profileId) ?? defaultContributorReputation()
+  }));
 }
 
 async function getRankedPageActivityRows(): Promise<RankedPageActivityRow[]> {
@@ -519,12 +602,32 @@ async function getProfileDiscoveryRows(
 }
 
 function buildNotificationReason(sources: NotificationSource[]): string {
+  if (
+    sources.includes("bookmarked_page") &&
+    sources.includes("followed_profile") &&
+    sources.includes("followed_topic")
+  ) {
+    return "Someone you follow posted on a bookmarked page that matches a topic you follow.";
+  }
+
   if (sources.includes("bookmarked_page") && sources.includes("followed_profile")) {
     return "Someone you follow posted on a page you bookmarked.";
   }
 
+  if (sources.includes("bookmarked_page") && sources.includes("followed_topic")) {
+    return "A bookmarked page lit up inside one of your followed topics.";
+  }
+
+  if (sources.includes("followed_profile") && sources.includes("followed_topic")) {
+    return "Someone you follow published a take inside one of your topics.";
+  }
+
   if (sources.includes("followed_profile")) {
     return "A followed profile published a new take.";
+  }
+
+  if (sources.includes("followed_topic")) {
+    return "A followed topic has a new take worth checking.";
   }
 
   return "A bookmarked page has new activity.";
@@ -1149,6 +1252,112 @@ export async function getTopicSurface(
     topTakes,
     topContributors
   };
+}
+
+export async function getRecentTakesForTopic(
+  topic: InterestTag,
+  limit = 8
+): Promise<DiscoveryTake[]> {
+  const clusterTags = buildInterestCluster(topic, 5);
+  const takeCandidates = await getRecentTakeCandidates(Math.max(limit * 6, 48));
+  const takePageMap = await getDiscoveryPagesByIds(takeCandidates.map((take) => take.pageId));
+
+  return takeCandidates
+    .filter((take) => {
+      const page = takePageMap.get(take.pageId);
+      return page ? hasInterestOverlap(page.tags, clusterTags) : false;
+    })
+    .sort(
+      (left, right) =>
+        new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime() ||
+        right.helpfulCount - left.helpfulCount
+    )
+    .slice(0, limit);
+}
+
+export async function getTopicFeedFromFollowedProfiles(
+  profileId: string,
+  topic: InterestTag,
+  limit = 6
+): Promise<FollowGraphItem[]> {
+  const rows = await db
+    .select({
+      commentId: comments.id,
+      body: comments.body,
+      createdAt: comments.createdAt,
+      helpfulCount: sql<number>`count(${commentHelpfulVotes.id})::int`,
+      authorProfileId: profiles.id,
+      authorHandle: profiles.handle,
+      pageId: pages.id,
+      pageKind: pages.pageKind,
+      pageTitle: pages.title,
+      pageCanonicalUrl: pages.canonicalUrl,
+      pageHost: pages.host
+    })
+    .from(comments)
+    .innerJoin(profiles, eq(profiles.id, comments.profileId))
+    .innerJoin(pages, eq(pages.id, comments.pageId))
+    .innerJoin(
+      follows,
+      and(eq(follows.followeeProfileId, comments.profileId), eq(follows.followerProfileId, profileId))
+    )
+    .leftJoin(commentHelpfulVotes, eq(commentHelpfulVotes.commentId, comments.id))
+    .leftJoin(
+      mutedPages,
+      and(eq(mutedPages.pageId, comments.pageId), eq(mutedPages.profileId, profileId))
+    )
+    .leftJoin(
+      mutedProfiles,
+      and(eq(mutedProfiles.mutedProfileId, comments.profileId), eq(mutedProfiles.profileId, profileId))
+    )
+    .where(
+      and(
+        eq(comments.hidden, false),
+        ne(comments.profileId, profileId),
+        sql`${mutedPages.id} is null`,
+        sql`${mutedProfiles.id} is null`
+      )
+    )
+    .groupBy(
+      comments.id,
+      comments.body,
+      comments.createdAt,
+      profiles.id,
+      profiles.handle,
+      pages.id,
+      pages.pageKind,
+      pages.title,
+      pages.canonicalUrl,
+      pages.host
+    )
+    .orderBy(desc(comments.createdAt))
+    .limit(Math.max(limit * 8, 48));
+
+  const reputationMap = await getContributorReputationMap(rows.map((row) => row.authorProfileId));
+  const pageMap = await getDiscoveryPagesByIds(rows.map((row) => row.pageId));
+  const clusterTags = buildInterestCluster(topic, 5);
+
+  return rows
+    .filter((row) => {
+      const page = pageMap.get(row.pageId);
+      return page ? hasInterestOverlap(page.tags, clusterTags) : false;
+    })
+    .map((row) => ({
+      commentId: row.commentId,
+      body: row.body,
+      createdAt: row.createdAt.toISOString(),
+      helpfulCount: row.helpfulCount,
+      authorProfileId: row.authorProfileId,
+      authorHandle: row.authorHandle,
+      authorReputation: reputationMap.get(row.authorProfileId) ?? defaultContributorReputation(),
+      pageId: row.pageId,
+      pageKind: row.pageKind as PageSummary["pageKind"],
+      pageTitle: row.pageTitle,
+      pageCanonicalUrl: row.pageCanonicalUrl,
+      pageHost: row.pageHost,
+      reason: `New take from someone you follow in ${getInterestTagLabel(topic)}.`
+    }))
+    .slice(0, limit);
 }
 
 export async function getPeopleSimilarToFollowing(
@@ -1806,105 +2015,13 @@ export async function getBookmarkedPagesForProfile(
 }
 
 async function getUnreadNotificationCommentIds(profileId: string): Promise<string[]> {
-  const preferences = await getNotificationPreferencesForProfile(profileId);
-  const sourceClauses = [
-    preferences.bookmarkedPageComments ? sql`${saves.id} is not null` : null,
-    preferences.followedProfileTakes ? sql`${follows.id} is not null` : null
-  ].filter((value): value is ReturnType<typeof sql> => value !== null);
-
-  if (sourceClauses.length === 0) {
-    return [];
-  }
-
-  const rows = await db
-    .select({
-      commentId: comments.id
-    })
-    .from(comments)
-    .leftJoin(
-      saves,
-      and(eq(saves.pageId, comments.pageId), eq(saves.profileId, profileId))
-    )
-    .leftJoin(
-      follows,
-      and(eq(follows.followeeProfileId, comments.profileId), eq(follows.followerProfileId, profileId))
-    )
-    .leftJoin(
-      notificationReads,
-      and(eq(notificationReads.commentId, comments.id), eq(notificationReads.profileId, profileId))
-    )
-    .leftJoin(
-      mutedPages,
-      and(eq(mutedPages.pageId, comments.pageId), eq(mutedPages.profileId, profileId))
-    )
-    .leftJoin(
-      mutedProfiles,
-      and(eq(mutedProfiles.mutedProfileId, comments.profileId), eq(mutedProfiles.profileId, profileId))
-    )
-    .where(
-      and(
-        eq(comments.hidden, false),
-        ne(comments.profileId, profileId),
-        or(...sourceClauses),
-        sql`${notificationReads.id} is null`,
-        sql`${mutedPages.id} is null`,
-        sql`${mutedProfiles.id} is null`
-      )
-    )
-    .groupBy(comments.id)
-    .orderBy(desc(sql`max(${comments.createdAt})`));
-
-  return rows.map((row) => row.commentId);
+  const notifications = await getNotificationsForProfile(profileId, 500);
+  return notifications.filter((item) => item.unread).map((item) => item.commentId);
 }
 
 export async function getUnreadNotificationCount(profileId: string): Promise<number> {
-  const preferences = await getNotificationPreferencesForProfile(profileId);
-  const sourceClauses = [
-    preferences.bookmarkedPageComments ? sql`${saves.id} is not null` : null,
-    preferences.followedProfileTakes ? sql`${follows.id} is not null` : null
-  ].filter((value): value is ReturnType<typeof sql> => value !== null);
-
-  if (sourceClauses.length === 0) {
-    return 0;
-  }
-
-  const [row] = await db
-    .select({
-      count: sql<number>`count(distinct ${comments.id})::int`
-    })
-    .from(comments)
-    .leftJoin(
-      saves,
-      and(eq(saves.pageId, comments.pageId), eq(saves.profileId, profileId))
-    )
-    .leftJoin(
-      follows,
-      and(eq(follows.followeeProfileId, comments.profileId), eq(follows.followerProfileId, profileId))
-    )
-    .leftJoin(
-      notificationReads,
-      and(eq(notificationReads.commentId, comments.id), eq(notificationReads.profileId, profileId))
-    )
-    .leftJoin(
-      mutedPages,
-      and(eq(mutedPages.pageId, comments.pageId), eq(mutedPages.profileId, profileId))
-    )
-    .leftJoin(
-      mutedProfiles,
-      and(eq(mutedProfiles.mutedProfileId, comments.profileId), eq(mutedProfiles.profileId, profileId))
-    )
-    .where(
-      and(
-        eq(comments.hidden, false),
-        ne(comments.profileId, profileId),
-        or(...sourceClauses),
-        sql`${notificationReads.id} is null`,
-        sql`${mutedPages.id} is null`,
-        sql`${mutedProfiles.id} is null`
-      )
-    );
-
-  return row?.count ?? 0;
+  const notifications = await getNotificationsForProfile(profileId, 500);
+  return notifications.filter((item) => item.unread).length;
 }
 
 export async function markNotificationsRead(params: {
@@ -1942,12 +2059,11 @@ export async function getNotificationsForProfile(
   limit = 50
 ): Promise<NotificationItem[]> {
   const preferences = await getNotificationPreferencesForProfile(profileId);
-  const sourceClauses = [
-    preferences.bookmarkedPageComments ? sql`${saves.id} is not null` : null,
-    preferences.followedProfileTakes ? sql`${follows.id} is not null` : null
-  ].filter((value): value is ReturnType<typeof sql> => value !== null);
-
-  if (sourceClauses.length === 0) {
+  if (
+    !preferences.bookmarkedPageComments &&
+    !preferences.followedProfileTakes &&
+    !preferences.followedTopicTakes
+  ) {
     return [];
   }
 
@@ -1996,7 +2112,6 @@ export async function getNotificationsForProfile(
       and(
         eq(comments.hidden, false),
         ne(comments.profileId, profileId),
-        or(...sourceClauses),
         sql`${mutedPages.id} is null`,
         sql`${mutedProfiles.id} is null`
       )
@@ -2014,15 +2129,24 @@ export async function getNotificationsForProfile(
       pages.host
     )
     .orderBy(desc(comments.createdAt))
-    .limit(Math.max(limit * 3, 30));
+    .limit(Math.max(limit * 8, 120));
 
-  const reputationMap = await getContributorReputationMap(rows.map((row) => row.authorProfileId));
+  const [reputationMap, topicMatchMap] = await Promise.all([
+    getContributorReputationMap(rows.map((row) => row.authorProfileId)),
+    getTopicMatchMap(
+      profileId,
+      rows.map((row) => row.pageId)
+    )
+  ]);
 
   return rows
     .map((row) => {
       const sources: NotificationSource[] = [];
       if (preferences.bookmarkedPageComments && row.fromBookmarkedPage) sources.push("bookmarked_page");
       if (preferences.followedProfileTakes && row.fromFollowedProfile) sources.push("followed_profile");
+      if (preferences.followedTopicTakes && (topicMatchMap.get(row.pageId)?.length ?? 0) > 0) {
+        sources.push("followed_topic");
+      }
 
       const authorReputation =
         reputationMap.get(row.authorProfileId) ?? defaultContributorReputation();
@@ -2168,13 +2292,15 @@ export async function getNotificationPreferencesForProfile(
     where: eq(profiles.id, profileId),
     columns: {
       notifyBookmarkedPageComments: true,
-      notifyFollowedProfileTakes: true
+      notifyFollowedProfileTakes: true,
+      notifyFollowedTopicTakes: true
     }
   });
 
   return {
     bookmarkedPageComments: row?.notifyBookmarkedPageComments ?? true,
-    followedProfileTakes: row?.notifyFollowedProfileTakes ?? true
+    followedProfileTakes: row?.notifyFollowedProfileTakes ?? true,
+    followedTopicTakes: row?.notifyFollowedTopicTakes ?? true
   };
 }
 
@@ -2182,18 +2308,21 @@ export async function updateNotificationPreferences(params: {
   profileId: string;
   bookmarkedPageComments: boolean;
   followedProfileTakes: boolean;
+  followedTopicTakes: boolean;
 }): Promise<NotificationPreferences> {
   await db
     .update(profiles)
     .set({
       notifyBookmarkedPageComments: params.bookmarkedPageComments,
-      notifyFollowedProfileTakes: params.followedProfileTakes
+      notifyFollowedProfileTakes: params.followedProfileTakes,
+      notifyFollowedTopicTakes: params.followedTopicTakes
     })
     .where(eq(profiles.id, params.profileId));
 
   return {
     bookmarkedPageComments: params.bookmarkedPageComments,
-    followedProfileTakes: params.followedProfileTakes
+    followedProfileTakes: params.followedProfileTakes,
+    followedTopicTakes: params.followedTopicTakes
   };
 }
 
@@ -2631,6 +2760,44 @@ export async function followProfile(params: {
     .values({
       followerProfileId: params.followerProfileId,
       followeeProfileId: params.followeeProfileId
+    })
+    .onConflictDoNothing();
+}
+
+export async function getFollowedTopicsForProfile(profileId: string): Promise<InterestTag[]> {
+  const rows = await db
+    .select({
+      topicTag: topicFollows.topicTag
+    })
+    .from(topicFollows)
+    .where(eq(topicFollows.profileId, profileId))
+    .orderBy(desc(topicFollows.createdAt));
+
+  return rows
+    .map((row) => row.topicTag)
+    .filter((tag): tag is InterestTag => INTEREST_TAGS.includes(tag));
+}
+
+export async function hasProfileFollowedTopic(params: {
+  profileId: string;
+  topic: InterestTag;
+}): Promise<boolean> {
+  const row = await db.query.topicFollows.findFirst({
+    where: and(eq(topicFollows.profileId, params.profileId), eq(topicFollows.topicTag, params.topic))
+  });
+
+  return Boolean(row);
+}
+
+export async function followTopicForProfile(params: {
+  profileId: string;
+  topic: InterestTag;
+}): Promise<void> {
+  await db
+    .insert(topicFollows)
+    .values({
+      profileId: params.profileId,
+      topicTag: params.topic
     })
     .onConflictDoNothing();
 }

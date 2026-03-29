@@ -30,6 +30,9 @@ export const profiles = pgTable(
     notifyFollowedProfileTakes: boolean("notify_followed_profile_takes")
       .default(true)
       .notNull(),
+    notifyFollowedTopicTakes: boolean("notify_followed_topic_takes")
+      .default(true)
+      .notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
   },
   (table) => ({
@@ -221,6 +224,24 @@ export const follows = pgTable(
     followerFolloweeUnique: uniqueIndex("follows_follower_followee_unique").on(
       table.followerProfileId,
       table.followeeProfileId
+    )
+  })
+);
+
+export const topicFollows = pgTable(
+  "topic_follows",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    profileId: uuid("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    topicTag: text("topic_tag").$type<InterestTag>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    profileTopicUnique: uniqueIndex("topic_follows_profile_topic_unique").on(
+      table.profileId,
+      table.topicTag
     )
   })
 );
