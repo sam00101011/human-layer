@@ -650,9 +650,11 @@ export default async function HomePage(props: {
           <Link className="button secondary" href="/topics">
             Topics
           </Link>
-          <Link className="button secondary" href="/bookmarks">
-            Bookmarks
-          </Link>
+          {viewer ? (
+            <Link className="button secondary" href="/bookmarks">
+              Bookmarks
+            </Link>
+          ) : null}
           {viewer ? (
             <Link className="button secondary" href="/notifications">
               Notifications
