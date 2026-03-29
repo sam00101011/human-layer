@@ -97,12 +97,14 @@ export async function POST(request: NextRequest) {
       signal: verification.signal
     });
 
-    const rawToken = await createSessionForProfile(profile.id);
-    const redirectTo = body?.handoff
-      ? `/auth/extension-handoff?returnUrl=${encodeURIComponent(body.returnUrl ?? "")}`
-      : `/profiles/${encodeURIComponent(profile.handle)}`;
+   const rawToken = await createSessionForProfile(profile.id);
+   const redirectTo = body?.handoff
+     ? `/auth/extension-handoff?returnUrl=${encodeURIComponent(body.returnUrl ?? "")}`
+      : `/install-extension?source=verify&next=${encodeURIComponent(
+          `/profiles/${profile.handle}`
+        )}`;
 
-    const response = NextResponse.json({
+   const response = NextResponse.json({
       ok: true,
       created,
       redirectTo,
