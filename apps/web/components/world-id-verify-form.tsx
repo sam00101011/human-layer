@@ -60,7 +60,7 @@ export function WorldIdVerifyForm({
   const [handle, setHandle] = useState("");
   const [selectedTags, setSelectedTags] = useState<InterestTag[]>(["devtools", "research"]);
   const [mockHumanKey, setMockHumanKey] = useState("");
-  const [verificationLevel, setVerificationLevel] = useState<"orb" | "device">("orb");
+  const [verificationLevel, setVerificationLevel] = useState<"orb" | "device">("device");
   const [requestConfig, setRequestConfig] = useState<WorldIdRequestConfig | null>(null);
   const [isWidgetOpen, setIsWidgetOpen] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -432,18 +432,18 @@ export function WorldIdVerifyForm({
           <span>Verification type</span>
           <div className="chip-row">
             <button
-              className={verificationLevel === "orb" ? "chip active" : "chip"}
-              onClick={() => setVerificationLevel("orb")}
-              type="button"
-            >
-              Orb only
-            </button>
-            <button
               className={verificationLevel === "device" ? "chip active" : "chip"}
               onClick={() => setVerificationLevel("device")}
               type="button"
             >
-              Orb or device
+              via World app
+            </button>
+            <button
+              className={verificationLevel === "orb" ? "chip active" : "chip"}
+              onClick={() => setVerificationLevel("orb")}
+              type="button"
+            >
+              via Orb
             </button>
           </div>
           <span className="helper">
