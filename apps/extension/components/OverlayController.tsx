@@ -1,6 +1,10 @@
 "use client";
 
 import {
+  type BookmarkedPagePreview,
+  type ExtensionDashboardResponse,
+  type InterestTag,
+  type NotificationPreferences,
   VERDICTS,
   type NormalizedPageCandidate,
   type PageLookupResponse,
@@ -41,8 +45,11 @@ type PendingAction =
   | { type: "submit_take" }
   | { type: "save_page" }
   | { type: "follow_profile"; profileId: string }
+  | { type: "follow_topic"; topic: InterestTag }
   | { type: "helpful_comment"; commentId: string }
   | { type: "report_comment"; commentId: string }
+  | { type: "mute_page" }
+  | { type: "update_notification_preferences"; preferences: NotificationPreferences }
   | null;
 
 function isErrorResponsePayload(value: unknown): value is ErrorResponsePayload {
@@ -68,10 +75,15 @@ export function OverlayController({
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [bookmarks, setBookmarks] = useState<BookmarkedPagePreview[]>([]);
   const [followedProfileIds, setFollowedProfileIds] = useState<string[]>([]);
+  const [followedTopics, setFollowedTopics] = useState<InterestTag[]>([]);
   const [helpfulCommentIds, setHelpfulCommentIds] = useState<string[]>([]);
   const [helpfulCountsByCommentId, setHelpfulCountsByCommentId] = useState<Record<string, number>>({});
   const [helpfulSubmittingCommentIds, setHelpfulSubmittingCommentIds] = useState<string[]>([]);
+  const [mutedCurrentPage, setMutedCurrentPage] = useState(false);
+  const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences | null>(null);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [reportedCommentIds, setReportedCommentIds] = useState<string[]>([]);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [authResumeCount, setAuthResumeCount] = useState(0);
@@ -132,12 +144,20 @@ export function OverlayController({
     window.open(`${appUrl}/bookmarks`, "_blank", "noopener,noreferrer");
   }
 
+  function openNotifications() {
+    window.open(`${appUrl}/notifications`, "_blank", "noopener,noreferrer");
+  }
+
   function openProfile(handle: string) {
     window.open(
       `${appUrl}/profiles/${encodeURIComponent(handle)}`,
       "_blank",
       "noopener,noreferrer"
     );
+  }
+
+  function openTopic(topic: InterestTag) {
+    window.open(`${appUrl}/topics/${encodeURIComponent(topic)}`, "_blank", "noopener,noreferrer");
   }
 
   function openFeedback() {
@@ -190,6 +210,11 @@ export function OverlayController({
         return;
       }
 
+      if (queuedAction.type === "follow_topic") {
+        await handleFollowTopic(queuedAction.topic);
+        return;
+      }
+
       if (queuedAction.type === "report_comment") {
         await handleReportComment(queuedAction.commentId);
         return;
@@ -197,6 +222,16 @@ export function OverlayController({
 
       if (queuedAction.type === "helpful_comment") {
         await handleHelpfulComment(queuedAction.commentId);
+        return;
+      }
+
+      if (queuedAction.type === "mute_page") {
+        await handleMuteCurrentPage();
+        return;
+      }
+
+      if (queuedAction.type === "update_notification_preferences") {
+        await handleUpdateNotificationPreferences(queuedAction.preferences);
         return;
       }
 
@@ -217,9 +252,14 @@ export function OverlayController({
 
   useEffect(() => {
     trackedOverlayKeyRef.current = null;
+    setBookmarks([]);
+    setFollowedTopics([]);
     setHelpfulCommentIds([]);
     setHelpfulCountsByCommentId({});
     setHelpfulSubmittingCommentIds([]);
+    setMutedCurrentPage(false);
+    setNotificationPreferences(null);
+    setUnreadNotificationCount(0);
   }, [appUrl, currentUrl]);
 
   useEffect(() => {
@@ -257,6 +297,58 @@ export function OverlayController({
     if (!authToken) return null;
     return authToken;
   }
+
+  async function loadViewerDashboard(authTokenOverride?: string | null) {
+    if (!lookup?.page || !lookup.viewer) {
+      setBookmarks([]);
+      setFollowedTopics([]);
+      setMutedCurrentPage(false);
+      setNotificationPreferences(null);
+      setUnreadNotificationCount(0);
+      return false;
+    }
+
+    const authToken = authTokenOverride ?? (await getAuthorizedToken());
+    if (!authToken) {
+      setBookmarks([]);
+      setFollowedTopics([]);
+      setMutedCurrentPage(false);
+      setNotificationPreferences(null);
+      setUnreadNotificationCount(0);
+      return false;
+    }
+
+    const response = await sendApiProxyRequest<ExtensionDashboardResponse>({
+      appUrl,
+      path: `/api/extension/dashboard?pageId=${encodeURIComponent(lookup.page.id)}`,
+      authToken
+    }).catch(() => null);
+
+    if (!response?.ok || !response.json) {
+      return false;
+    }
+
+    const payload = response.json as ExtensionDashboardResponse;
+    setBookmarks(payload.bookmarks);
+    setFollowedTopics(payload.followedTopics);
+    setMutedCurrentPage(payload.mutedCurrentPage);
+    setNotificationPreferences(payload.notificationPreferences);
+    setUnreadNotificationCount(payload.unreadNotificationCount);
+    return true;
+  }
+
+  useEffect(() => {
+    if (!lookup?.page || !lookup.viewer) {
+      setBookmarks([]);
+      setFollowedTopics([]);
+      setMutedCurrentPage(false);
+      setNotificationPreferences(null);
+      setUnreadNotificationCount(0);
+      return;
+    }
+
+    void loadViewerDashboard();
+  }, [lookup?.page?.id, lookup?.viewer?.profileId]);
 
   async function postJson(
     url: string,
@@ -349,6 +441,7 @@ export function OverlayController({
       const ok = await postJson(`${appUrl}/api/pages/${lookup.page.id}/save`, {}, authToken);
       if (!ok) return;
       setSaved(true);
+      await loadViewerDashboard(authToken);
       setStatusMessage("Page saved.");
     } finally {
       setIsSubmitting(false);
@@ -372,6 +465,26 @@ export function OverlayController({
         current.includes(profileId) ? current : [...current, profileId]
       );
       setStatusMessage("Following profile.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleFollowTopic(topic: InterestTag) {
+    const authToken = await getAuthorizedToken();
+    if (!authToken) {
+      setPendingAction({ type: "follow_topic", topic });
+      setStatusMessage("Finish verification to follow this topic.");
+      openVerify();
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const ok = await postJson(`${appUrl}/api/topics/${topic}/follow`, {}, authToken);
+      if (!ok) return;
+      setFollowedTopics((current) => (current.includes(topic) ? current : [...current, topic]));
+      setStatusMessage("Topic followed.");
     } finally {
       setIsSubmitting(false);
     }
@@ -440,27 +553,89 @@ export function OverlayController({
     }
   }
 
+  async function handleMuteCurrentPage() {
+    if (!lookup?.page) return;
+
+    const authToken = await getAuthorizedToken();
+    if (!authToken) {
+      setPendingAction({ type: "mute_page" });
+      setStatusMessage("Finish verification to mute this page.");
+      openVerify();
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const ok = await postJson(
+        `${appUrl}/api/notifications/mute`,
+        { pageId: lookup.page.id },
+        authToken
+      );
+      if (!ok) return;
+      setMutedCurrentPage(true);
+      setStatusMessage("This page is muted from your notifications.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleUpdateNotificationPreferences(nextPreferences: NotificationPreferences) {
+    const authToken = await getAuthorizedToken();
+    if (!authToken) {
+      setPendingAction({
+        type: "update_notification_preferences",
+        preferences: nextPreferences
+      });
+      setStatusMessage("Finish verification to update notification controls.");
+      openVerify();
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const ok = await postJson(
+        `${appUrl}/api/notifications/preferences`,
+        nextPreferences,
+        authToken
+      );
+      if (!ok) return;
+      setNotificationPreferences(nextPreferences);
+      setStatusMessage("Notification controls updated.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   return (
     <OverlayView
+      bookmarks={bookmarks}
       draftComment={draftComment}
       followedProfileIds={followedProfileIds}
+      followedTopics={followedTopics}
       helpfulCommentIds={helpfulCommentIds}
       helpfulCountsByCommentId={helpfulCountsByCommentId}
       helpfulSubmittingCommentIds={helpfulSubmittingCommentIds}
+      isCurrentPageMuted={mutedCurrentPage}
       isSaved={saved}
       isSubmitting={isSubmitting}
       lookup={lookup}
+      notificationPreferences={notificationPreferences}
       onDraftCommentChange={setDraftComment}
       onFollow={handleFollow}
+      onFollowTopic={handleFollowTopic}
       onHelpful={handleHelpfulComment}
       onOpenBookmarks={openBookmarks}
+      onOpenNotifications={openNotifications}
       onOpenPage={openPage}
       onOpenProfile={openProfile}
+      onOpenTopic={openTopic}
       onOpenFeedback={openFeedback}
+      onMuteCurrentPage={handleMuteCurrentPage}
       onReportComment={handleReportComment}
       onRetry={() => {
         void refreshLookup({ replaceShell: true });
       }}
+      onUpdateNotificationPreferences={handleUpdateNotificationPreferences}
       reportedCommentIds={reportedCommentIds}
       onSave={handleSave}
       onSubmitTake={handleSubmitTake}
@@ -470,6 +645,7 @@ export function OverlayController({
       statusMessage={statusMessage}
       surfaceState={surfaceState}
       target={target}
+      unreadNotificationCount={unreadNotificationCount}
       verdictOptions={VERDICTS}
     />
   );

@@ -2,8 +2,12 @@ import type { CSSProperties, ReactNode } from "react";
 import {
   buildPageContextSummary,
   explainHumanTakeRecommendation,
+  getInterestTagLabel,
   sortHumanTakes,
+  type BookmarkedPagePreview,
   type CommentProjection,
+  type InterestTag,
+  type NotificationPreferences,
   type NormalizedPageCandidate,
   type PageLookupResponse,
   type Verdict
@@ -13,25 +17,34 @@ import { Bookmark, BookmarkCheck, Sparkles, ThumbsUp } from "lucide-react";
 import type { OverlaySurfaceState } from "./OverlayController";
 
 type OverlayViewProps = {
+  bookmarks: BookmarkedPagePreview[];
   draftComment: string;
   followedProfileIds: string[];
+  followedTopics: InterestTag[];
   helpfulCommentIds: string[];
   helpfulCountsByCommentId: Record<string, number>;
   helpfulSubmittingCommentIds: string[];
+  isCurrentPageMuted: boolean;
   isSaved: boolean;
   isSubmitting: boolean;
   lookup: PageLookupResponse | null;
+  notificationPreferences: NotificationPreferences | null;
   onDraftCommentChange(value: string): void;
   onFollow(profileId: string): void;
+  onFollowTopic(topic: InterestTag): void;
   onHelpful(commentId: string): void;
   onOpenBookmarks(): void;
   onOpenFeedback(): void;
+  onOpenNotifications(): void;
   onOpenPage(pageId: string): void;
   onOpenProfile(handle: string): void;
+  onOpenTopic(topic: InterestTag): void;
+  onMuteCurrentPage(): void;
   onReportComment(commentId: string): void;
   onRetry(): void;
   onSave(): void;
   onSubmitTake(): void;
+  onUpdateNotificationPreferences(preferences: NotificationPreferences): void;
   onVerify(): void;
   onVerdictSelect(verdict: Verdict | null): void;
   reportedCommentIds: string[];
@@ -39,6 +52,7 @@ type OverlayViewProps = {
   statusMessage: string | null;
   surfaceState: OverlaySurfaceState;
   target: NormalizedPageCandidate;
+  unreadNotificationCount: number;
   verdictOptions: readonly Verdict[];
 };
 
@@ -324,6 +338,166 @@ function renderComposer(props: OverlayViewProps, lookup: PageLookupResponse) {
   );
 }
 
+function renderSignedInGraph(
+  props: OverlayViewProps,
+  lookup: PageLookupResponse,
+  suggestedTopics: InterestTag[]
+) {
+  if (!lookup.viewer) {
+    return renderVerifyPrompt(props);
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 10 }}>
+      <div style={{ ...pillStyle, width: "fit-content" }}>
+        <span>Signed in as</span>
+        {renderProfileHandle({
+          handle: lookup.viewer.handle,
+          onOpenProfile: props.onOpenProfile,
+          variant: "pill"
+        })}
+      </div>
+
+      <div style={actionRowStyle}>
+        <button onClick={props.onOpenBookmarks} style={secondaryButtonStyle} type="button">
+          My bookmarks
+        </button>
+        <button onClick={props.onOpenNotifications} style={secondaryButtonStyle} type="button">
+          Notifications{props.unreadNotificationCount > 0 ? ` • ${props.unreadNotificationCount}` : ""}
+        </button>
+      </div>
+
+      {suggestedTopics.length > 0 ? (
+        <div style={{ display: "grid", gap: 6 }}>
+          <span style={sectionLabelStyle}>Follow topics from this page</span>
+          <div style={{ display: "grid", gap: 8 }}>
+            {suggestedTopics.map((topic) => {
+              const isFollowing = props.followedTopics.includes(topic);
+              return (
+                <div key={topic} style={miniRowCardStyle}>
+                  <button onClick={() => props.onOpenTopic(topic)} style={chipButtonStyle} type="button">
+                    {getInterestTagLabel(topic)}
+                  </button>
+                  <button
+                    disabled={isFollowing || props.isSubmitting}
+                    onClick={() => props.onFollowTopic(topic)}
+                    style={{
+                      ...secondaryButtonStyle,
+                      padding: "6px 10px",
+                      fontSize: 12,
+                      opacity: isFollowing || props.isSubmitting ? 0.6 : 1
+                    }}
+                    type="button"
+                  >
+                    {isFollowing ? "Following" : "Follow"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      <div style={{ display: "grid", gap: 6 }}>
+        <span style={sectionLabelStyle}>Notification controls</span>
+        {props.notificationPreferences ? (
+          <div style={{ display: "grid", gap: 8 }}>
+            <div style={miniRowCardStyle}>
+              <div style={controlLabelStyle}>
+                <strong>Bookmarked pages</strong>
+                <span style={helperNoteStyle}>Fresh takes on pages you saved.</span>
+              </div>
+              <button
+                onClick={() =>
+                  props.onUpdateNotificationPreferences({
+                    ...props.notificationPreferences!,
+                    bookmarkedPageComments: !props.notificationPreferences!.bookmarkedPageComments
+                  })
+                }
+                style={chipButtonStyle}
+                type="button"
+              >
+                {props.notificationPreferences.bookmarkedPageComments ? "On" : "Off"}
+              </button>
+            </div>
+            <div style={miniRowCardStyle}>
+              <div style={controlLabelStyle}>
+                <strong>Followed people</strong>
+                <span style={helperNoteStyle}>New takes from people you follow.</span>
+              </div>
+              <button
+                onClick={() =>
+                  props.onUpdateNotificationPreferences({
+                    ...props.notificationPreferences!,
+                    followedProfileTakes: !props.notificationPreferences!.followedProfileTakes
+                  })
+                }
+                style={chipButtonStyle}
+                type="button"
+              >
+                {props.notificationPreferences.followedProfileTakes ? "On" : "Off"}
+              </button>
+            </div>
+            <div style={miniRowCardStyle}>
+              <div style={controlLabelStyle}>
+                <strong>Followed topics</strong>
+                <span style={helperNoteStyle}>Signal from topics you track.</span>
+              </div>
+              <button
+                onClick={() =>
+                  props.onUpdateNotificationPreferences({
+                    ...props.notificationPreferences!,
+                    followedTopicTakes: !props.notificationPreferences!.followedTopicTakes
+                  })
+                }
+                style={chipButtonStyle}
+                type="button"
+              >
+                {props.notificationPreferences.followedTopicTakes ? "On" : "Off"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p style={helperNoteStyle}>Loading your notification graph...</p>
+        )}
+        <button
+          disabled={props.isCurrentPageMuted || props.isSubmitting}
+          onClick={props.onMuteCurrentPage}
+          style={{
+            ...secondaryButtonStyle,
+            width: "fit-content",
+            opacity: props.isCurrentPageMuted || props.isSubmitting ? 0.6 : 1
+          }}
+          type="button"
+        >
+          {props.isCurrentPageMuted ? "Page muted" : "Mute this page"}
+        </button>
+      </div>
+
+      <div style={{ display: "grid", gap: 6 }}>
+        <span style={sectionLabelStyle}>Recent bookmarks</span>
+        {props.bookmarks.length === 0 ? (
+          <p style={helperNoteStyle}>Your recent bookmarks will show up here for quick access.</p>
+        ) : (
+          props.bookmarks.slice(0, 3).map((bookmark) => (
+            <button
+              key={bookmark.id}
+              onClick={() => props.onOpenPage(bookmark.id)}
+              style={bookmarkRowButtonStyle}
+              type="button"
+            >
+              <strong>{bookmark.title}</strong>
+              <span style={helperNoteStyle}>
+                {bookmark.host} • {formatPageKind(bookmark.pageKind)}
+              </span>
+            </button>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 function renderVerifyPrompt(props: Pick<OverlayViewProps, "onOpenFeedback" | "onVerify">) {
   return (
     <div style={{ display: "grid", gap: 8 }}>
@@ -385,6 +559,11 @@ export function OverlayView(props: OverlayViewProps) {
   const rankedComments = getRankedOverlayComments(lookup, props.helpfulCountsByCommentId);
   const topTake = rankedComments[0] ?? null;
   const recommendedComments = rankedComments.slice(topTake ? 1 : 0);
+  const pageContext = buildPageContextSummary({
+    page: lookup.page,
+    thread: lookup.thread
+  });
+  const suggestedTopics = pageContext.tags.slice(0, 4);
 
   return (
     <section data-state={lookup.state} style={panelStyle}>
@@ -403,49 +582,13 @@ export function OverlayView(props: OverlayViewProps) {
             This page is supported, but there are no verified takes yet. Be the first verified
             human to leave a verdict or comment.
           </p>
-          {lookup.viewer ? (
-            <div style={{ display: "grid", gap: 8 }}>
-              <div style={{ ...pillStyle, width: "fit-content" }}>
-                <span>Signed in as</span>
-                {renderProfileHandle({
-                  handle: lookup.viewer.handle,
-                  onOpenProfile: props.onOpenProfile,
-                  variant: "pill"
-                })}
-              </div>
-              <div style={actionRowStyle}>
-                <button onClick={props.onOpenBookmarks} style={secondaryButtonStyle} type="button">
-                  My bookmarks
-                </button>
-              </div>
-            </div>
-          ) : (
-            renderVerifyPrompt(props)
-          )}
+          {renderSignedInGraph(props, lookup, suggestedTopics)}
           {renderComposer(props, lookup)}
         </div>
       ) : (
         <div style={{ display: "grid", gap: 12 }}>
           {renderPageContext(lookup)}
-          {lookup.viewer ? (
-            <div style={{ display: "grid", gap: 8 }}>
-              <div style={{ ...pillStyle, width: "fit-content" }}>
-                <span>Signed in as</span>
-                {renderProfileHandle({
-                  handle: lookup.viewer.handle,
-                  onOpenProfile: props.onOpenProfile,
-                  variant: "pill"
-                })}
-              </div>
-              <div style={actionRowStyle}>
-                <button onClick={props.onOpenBookmarks} style={secondaryButtonStyle} type="button">
-                  My bookmarks
-                </button>
-              </div>
-            </div>
-          ) : (
-            renderVerifyPrompt(props)
-          )}
+          {renderSignedInGraph(props, lookup, suggestedTopics)}
           <div style={{ display: "grid", gap: 6 }}>
             <span style={sectionLabelStyle}>Top human take</span>
             {topTake ? (
@@ -648,6 +791,45 @@ const contextTagStyle: CSSProperties = {
   fontSize: 11,
   fontWeight: 700,
   textTransform: "capitalize"
+};
+
+const chipButtonStyle: CSSProperties = {
+  border: "1px solid rgba(255, 255, 255, 0.14)",
+  borderRadius: 999,
+  background: "rgba(255, 255, 255, 0.06)",
+  color: "#f9fafb",
+  cursor: "pointer",
+  padding: "6px 10px",
+  fontSize: 12,
+  fontWeight: 700
+};
+
+const miniRowCardStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 10,
+  padding: 10,
+  borderRadius: 12,
+  background: "rgba(255, 255, 255, 0.06)"
+};
+
+const controlLabelStyle: CSSProperties = {
+  display: "grid",
+  gap: 2
+};
+
+const bookmarkRowButtonStyle: CSSProperties = {
+  display: "grid",
+  gap: 4,
+  width: "100%",
+  border: "1px solid rgba(255, 255, 255, 0.12)",
+  borderRadius: 12,
+  background: "rgba(255, 255, 255, 0.04)",
+  color: "#f9fafb",
+  cursor: "pointer",
+  padding: 10,
+  textAlign: "left"
 };
 
 const profileHandleButtonStyle: CSSProperties = {

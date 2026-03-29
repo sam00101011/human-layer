@@ -318,6 +318,24 @@ export type PageLookupResponse = {
   viewer?: ViewerSummary | null;
 };
 
+export type NotificationPreferences = {
+  bookmarkedPageComments: boolean;
+  followedProfileTakes: boolean;
+  followedTopicTakes: boolean;
+};
+
+export type BookmarkedPagePreview = PageSummary & {
+  savedAt: string;
+};
+
+export type ExtensionDashboardResponse = {
+  bookmarks: BookmarkedPagePreview[];
+  followedTopics: InterestTag[];
+  notificationPreferences: NotificationPreferences;
+  unreadNotificationCount: number;
+  mutedCurrentPage: boolean;
+};
+
 export type NormalizedPageCandidate = {
   pageKind: Phase0PageKind;
   canonicalUrl: string;

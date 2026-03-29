@@ -5,23 +5,32 @@ import { describe, expect, it, vi } from "vitest";
 import { OverlayView } from "../components/OverlayView";
 
 const baseProps = {
+  bookmarks: [],
   draftComment: "",
   followedProfileIds: [],
+  followedTopics: [],
   helpfulCommentIds: [],
   helpfulCountsByCommentId: {},
   helpfulSubmittingCommentIds: [],
+  isCurrentPageMuted: false,
   isSaved: false,
   isSubmitting: false,
   lookup: null,
+  notificationPreferences: null,
   onDraftCommentChange: vi.fn(),
   onFollow: vi.fn(),
+  onFollowTopic: vi.fn(),
   onHelpful: vi.fn(),
   onOpenBookmarks: vi.fn(),
   onOpenFeedback: vi.fn(),
+  onOpenNotifications: vi.fn(),
   onOpenPage: vi.fn(),
   onOpenProfile: vi.fn(),
+  onOpenTopic: vi.fn(),
+  onMuteCurrentPage: vi.fn(),
   onReportComment: vi.fn(),
   onRetry: vi.fn(),
+  onUpdateNotificationPreferences: vi.fn(),
   reportedCommentIds: [],
   onSave: vi.fn(),
   onSubmitTake: vi.fn(),
@@ -38,6 +47,7 @@ const baseProps = {
     title: "vercel/next.js",
     requiresExistingPage: false
   } satisfies NormalizedPageCandidate,
+  unreadNotificationCount: 0,
   verdictOptions: ["useful", "misleading", "outdated", "scam"] as const
 };
 
@@ -237,6 +247,131 @@ describe("OverlayView", () => {
 
     const savedView = renderOverlay(lookup, { isSaved: true });
     expect(within(savedView.container).getByRole("button", { name: "Bookmarked" })).toBeTruthy();
+  });
+
+  it("shows topic follow actions and recent bookmarks for signed-in viewers", () => {
+    const onFollowTopic = vi.fn();
+    const onOpenPage = vi.fn();
+
+    const view = renderOverlay(
+      {
+        supported: true,
+        state: "active",
+        page: {
+          id: "page-1",
+          pageKind: "github_repo",
+          canonicalUrl: "https://github.com/vercel/next.js",
+          canonicalKey: "https://github.com/vercel/next.js",
+          host: "github.com",
+          title: "vercel/next.js"
+        },
+        thread: {
+          verdictCounts: {
+            useful: 2,
+            misleading: 0,
+            outdated: 0,
+            scam: 0
+          },
+          topHumanTake: {
+            commentId: "c1",
+            profileId: "profile-1",
+            profileHandle: "demo_builder",
+            body: "Useful open source framework docs.",
+            helpfulCount: 2,
+            createdAt: "2026-03-28T00:00:00.000Z"
+          },
+          recentComments: []
+        },
+        viewer: {
+          profileId: "viewer-1",
+          handle: "viewer"
+        }
+      },
+      {
+        bookmarks: [
+          {
+            id: "bookmark-1",
+            pageKind: "docs_page",
+            canonicalUrl: "https://react.dev/reference/react/useTransition",
+            canonicalKey: "https://react.dev/reference/react/useTransition",
+            host: "react.dev",
+            title: "useTransition",
+            savedAt: "2026-03-28T00:00:00.000Z"
+          }
+        ],
+        followedTopics: ["oss"],
+        notificationPreferences: {
+          bookmarkedPageComments: true,
+          followedProfileTakes: true,
+          followedTopicTakes: false
+        },
+        onFollowTopic,
+        onOpenPage,
+        unreadNotificationCount: 3
+      }
+    );
+
+    expect(within(view.container).getByText("Follow topics from this page")).toBeTruthy();
+    expect(within(view.container).getByRole("button", { name: "Notifications • 3" })).toBeTruthy();
+    expect(within(view.container).getByRole("button", { name: "Following" })).toBeTruthy();
+    fireEvent.click(within(view.container).getByRole("button", { name: "Follow", exact: true }));
+    expect(onFollowTopic).toHaveBeenCalled();
+    fireEvent.click(within(view.container).getByRole("button", { name: /useTransition/ }));
+    expect(onOpenPage).toHaveBeenCalledWith("bookmark-1");
+  });
+
+  it("lets people toggle notification controls and mute the current page", () => {
+    const onUpdateNotificationPreferences = vi.fn();
+    const onMuteCurrentPage = vi.fn();
+
+    const view = renderOverlay(
+      {
+        supported: true,
+        state: "active",
+        page: {
+          id: "page-1",
+          pageKind: "github_repo",
+          canonicalUrl: "https://github.com/vercel/next.js",
+          canonicalKey: "https://github.com/vercel/next.js",
+          host: "github.com",
+          title: "vercel/next.js"
+        },
+        thread: {
+          verdictCounts: {
+            useful: 1,
+            misleading: 0,
+            outdated: 0,
+            scam: 0
+          },
+          topHumanTake: null,
+          recentComments: []
+        },
+        viewer: {
+          profileId: "viewer-1",
+          handle: "viewer"
+        }
+      },
+      {
+        notificationPreferences: {
+          bookmarkedPageComments: true,
+          followedProfileTakes: false,
+          followedTopicTakes: true
+        },
+        onMuteCurrentPage,
+        onUpdateNotificationPreferences
+      }
+    );
+
+    const buttons = within(view.container).getAllByRole("button", { name: "On" });
+    fireEvent.click(buttons[0]!);
+    expect(onUpdateNotificationPreferences).toHaveBeenCalledWith({
+      bookmarkedPageComments: false,
+      followedProfileTakes: false,
+      followedTopicTakes: true
+    });
+
+    fireEvent.click(within(view.container).getByRole("button", { name: "Mute this page" }));
+    expect(onMuteCurrentPage).toHaveBeenCalled();
   });
 
   it("opens the page and profile links from the overlay", () => {

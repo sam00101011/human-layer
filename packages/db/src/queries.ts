@@ -2749,6 +2749,17 @@ export async function mutePageForProfile(params: {
     .onConflictDoNothing();
 }
 
+export async function hasMutedPageForProfile(params: {
+  pageId: string;
+  profileId: string;
+}): Promise<boolean> {
+  const row = await db.query.mutedPages.findFirst({
+    where: and(eq(mutedPages.pageId, params.pageId), eq(mutedPages.profileId, params.profileId))
+  });
+
+  return Boolean(row);
+}
+
 export async function muteProfileForProfile(params: {
   mutedProfileId: string;
   profileId: string;
