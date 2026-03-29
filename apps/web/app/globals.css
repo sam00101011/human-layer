@@ -22,6 +22,10 @@
   box-sizing: border-box;
 }
 
+html {
+  overflow-x: hidden;
+}
+
 html, body {
   margin: 0;
   min-height: 100vh;
@@ -1169,6 +1173,151 @@ button:focus-visible {
 @keyframes skeleton-shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
+}
+
+/* ===== Mobile-first refinements ===== */
+
+/* iPhone SE and small Android (320-375px) */
+@media (max-width: 375px) {
+  .page-shell {
+    padding: 12px;
+  }
+  
+  .card {
+    padding: 16px;
+    border-radius: 16px;
+  }
+
+  .hero-card {
+    padding: 16px;
+  }
+  
+  h1 {
+    font-size: 1.5rem;
+  }
+  
+  h2 {
+    font-size: 1.15rem;
+  }
+  
+  .stat-card {
+    padding: 12px;
+  }
+  
+  .stat-card strong {
+    font-size: 1.25rem;
+  }
+  
+  .top-nav {
+    border-radius: 16px;
+    top: 8px;
+  }
+  
+  .top-nav-brand {
+    font-size: 20px;
+  }
+  
+  .top-nav-links {
+    gap: 10px;
+  }
+  
+  .top-nav-link {
+    font-size: 13px;
+  }
+  
+  .site-footer {
+    border-radius: 16px;
+  }
+  
+  .site-footer-link {
+    font-size: 9px;
+  }
+  
+  .button {
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+
+  .chip {
+    padding: 5px 10px;
+    font-size: 12px;
+  }
+  
+  .pill {
+    padding: 3px 8px;
+    font-size: 10px;
+  }
+  
+  .badge, .trust-badge {
+    padding: 3px 8px;
+    font-size: 10px;
+  }
+  
+  .comment-card {
+    padding: 12px;
+  }
+  
+  .helper {
+    font-size: 11px;
+  }
+  
+  .input, .textarea {
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+}
+
+/* Standard mobile (376-480px) */
+@media (max-width: 480px) {
+  .metric-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .trust-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .link-row {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .action-row {
+    flex-direction: column;
+  }
+  
+  .action-row .button {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Ensure nav links scroll horizontally on mobile */
+@media (max-width: 640px) {
+  .top-nav-links {
+    gap: 8px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+  }
+  
+  .top-nav-link {
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  
+  .site-footer-links {
+    gap: 8px;
+  }
+  
+  .eyebrow {
+    font-size: 11px;
+  }
+
+  .inline-link {
+    font-size: 12px;
+  }
 }
 
 /* ===== Reduced motion ===== */
