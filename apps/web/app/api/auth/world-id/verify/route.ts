@@ -8,6 +8,7 @@ import {
 import { NextRequest, NextResponse } from "next/server";
 
 import {
+  createSignedWorldIdFinalizeToken,
   getSessionCookieName,
   getSessionCookieOptions
 } from "../../../../lib/auth";
@@ -97,17 +98,23 @@ export async function POST(request: NextRequest) {
       signal: verification.signal
     });
 
-   const rawToken = await createSessionForProfile(profile.id);
-   const redirectTo = body?.handoff
-     ? `/auth/extension-handoff?returnUrl=${encodeURIComponent(body.returnUrl ?? "")}`
+    const rawToken = await createSessionForProfile(profile.id);
+    const redirectTo = body?.handoff
+      ? `/auth/extension-handoff?returnUrl=${encodeURIComponent(body.returnUrl ?? "")}`
       : `/install-extension?source=verify&next=${encodeURIComponent(
           `/profiles/${profile.handle}`
         )}`;
+    const finalizeToken = createSignedWorldIdFinalizeToken({
+      profileId: profile.id,
+      redirectTo
+    });
+    const finalizeUrl = `/api/auth/world-id/finalize?token=${encodeURIComponent(finalizeToken)}`;
 
-   const response = NextResponse.json({
+    const response = NextResponse.json({
       ok: true,
       created,
       redirectTo,
+      finalizeUrl,
       profile: {
         id: profile.id,
         handle: profile.handle,
@@ -128,6 +135,7 @@ export async function POST(request: NextRequest) {
     });
 
     response.cookies.set(getSessionCookieName(), rawToken, getSessionCookieOptions());
+    response.headers.set("cache-control", "no-store");
     return response;
   } catch (error) {
     const requestId = crypto.randomUUID();

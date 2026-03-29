@@ -53,7 +53,7 @@ export function WorldIdVerifyForm({
   worldIdConfig
 }: WorldIdVerifyFormProps) {
   const router = useRouter();
-  const redirectRef = useRef<string | null>(null);
+  const finalizeUrlRef = useRef<string | null>(null);
   const verifyFailureMessageRef = useRef<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [isCheckingExistingSession, setIsCheckingExistingSession] = useState(handoff);
@@ -178,24 +178,24 @@ export function WorldIdVerifyForm({
     });
 
     const payload = (await response.json().catch(() => null)) as
-      | { error?: string; redirectTo?: string }
+      | { error?: string; finalizeUrl?: string }
       | null;
 
-    if (!response.ok || !payload?.redirectTo) {
+    if (!response.ok || !payload?.finalizeUrl) {
       throw new Error(payload?.error ?? "Verification failed.");
     }
 
-    return payload.redirectTo;
+    return payload.finalizeUrl;
   }
 
   async function handleMockSubmit() {
-    const redirectTo = await submitVerification({
+    const finalizeUrl = await submitVerification({
       mockHumanKey,
       verificationLevel,
       signal: worldIdConfig.signal
     });
 
-    router.push(redirectTo);
+    window.location.assign(finalizeUrl);
   }
 
   async function beginRemoteVerification() {
@@ -213,7 +213,7 @@ export function WorldIdVerifyForm({
       throw new Error(errorMessage);
     }
 
-    redirectRef.current = null;
+    finalizeUrlRef.current = null;
     setRequestConfig(payload);
     setIsWidgetOpen(true);
   }
@@ -229,7 +229,7 @@ export function WorldIdVerifyForm({
               nullifierHash: undefined,
               signalHash: undefined
             };
-      redirectRef.current = await submitVerification({
+      finalizeUrlRef.current = await submitVerification({
         worldIdResult: result,
         proof: payload.proof,
         merkleRoot: payload.merkleRoot,
@@ -510,12 +510,12 @@ export function WorldIdVerifyForm({
             }
           }}
           onSuccess={() => {
-            if (!redirectRef.current) {
-              setStatusMessage("Verification succeeded, but redirect information is missing.");
+            if (!finalizeUrlRef.current) {
+              setStatusMessage("Verification succeeded, but the browser could not finish sign-in.");
               return;
             }
 
-            router.push(redirectRef.current);
+            window.location.assign(finalizeUrlRef.current);
           }}
           open={isWidgetOpen}
           preset={

@@ -138,11 +138,15 @@ describe("POST /api/auth/world-id/verify", () => {
     });
     expect(response.status).toBe(200);
     expect(response.headers.get("set-cookie")).toContain("hl_session=session-token");
-    await expect(response.json()).resolves.toEqual({
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    await expect(response.json()).resolves.toMatchObject({
       ok: true,
       created: true,
       redirectTo:
         "/auth/extension-handoff?returnUrl=https%3A%2F%2Fgithub.com%2Fvercel%2Fnext.js",
+      finalizeUrl: expect.stringMatching(
+        /^\/api\/auth\/world-id\/finalize\?token=/
+      ),
       profile: {
         id: "profile-1",
         handle: "signal_builder",

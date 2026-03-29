@@ -28,7 +28,7 @@ export function getSessionCookieOptions() {
     httpOnly: true as const,
     sameSite: "lax" as const,
     path: "/",
-    secure: false,
+    secure: process.env.NODE_ENV === "production",
     maxAge: 60 * 60 * 24 * 7
   };
 }
@@ -84,6 +84,12 @@ type ExtensionTokenPayload = {
   expiresAt: string;
 };
 
+type WorldIdFinalizeTokenPayload = {
+  profileId: string;
+  redirectTo: string;
+  expiresAt: string;
+};
+
 export function verifySignedExtensionToken(rawToken: string): ExtensionTokenPayload | null {
   const [encodedPayload, signature] = rawToken.split(".");
   if (!encodedPayload || !signature) return null;
@@ -107,6 +113,62 @@ export function verifySignedExtensionToken(rawToken: string): ExtensionTokenPayl
   }
 
   if (!payload.profileId || !payload.handle || !payload.expiresAt) {
+    return null;
+  }
+
+  if (Date.now() >= new Date(payload.expiresAt).getTime()) {
+    return null;
+  }
+
+  return payload;
+}
+
+export function createSignedWorldIdFinalizeToken(params: {
+  profileId: string;
+  redirectTo: string;
+  ttlSeconds?: number;
+}) {
+  const expiresAt = new Date(Date.now() + 1000 * (params.ttlSeconds ?? 300)).toISOString();
+  const payload = {
+    profileId: params.profileId,
+    redirectTo: params.redirectTo,
+    expiresAt
+  };
+  const encodedPayload = base64UrlEncode(JSON.stringify(payload));
+  const signature = sign(encodedPayload, getRequiredSecret("SESSION_SECRET"));
+
+  return `${encodedPayload}.${signature}`;
+}
+
+export function verifySignedWorldIdFinalizeToken(
+  rawToken: string
+): WorldIdFinalizeTokenPayload | null {
+  const [encodedPayload, signature] = rawToken.split(".");
+  if (!encodedPayload || !signature) return null;
+
+  const expectedSignature = sign(encodedPayload, getRequiredSecret("SESSION_SECRET"));
+  const expectedBuffer = Buffer.from(expectedSignature);
+  const actualBuffer = Buffer.from(signature);
+
+  if (
+    expectedBuffer.length !== actualBuffer.length ||
+    !timingSafeEqual(expectedBuffer, actualBuffer)
+  ) {
+    return null;
+  }
+
+  let payload: WorldIdFinalizeTokenPayload;
+  try {
+    payload = JSON.parse(base64UrlDecode(encodedPayload)) as WorldIdFinalizeTokenPayload;
+  } catch {
+    return null;
+  }
+
+  if (!payload.profileId || !payload.redirectTo || !payload.expiresAt) {
+    return null;
+  }
+
+  if (!payload.redirectTo.startsWith("/")) {
     return null;
   }
 
