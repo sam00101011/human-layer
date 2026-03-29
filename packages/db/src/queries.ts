@@ -214,6 +214,25 @@ export type TopicSurface = {
   topContributors: DiscoveryProfile[];
 };
 
+export type PublicMetricsSnapshot = {
+  totalVerifiedUsers: number;
+  totalComments: number;
+  totalPages: number;
+  totalBookmarks: number;
+  totalHelpfulVotes: number;
+  totalProfileFollows: number;
+  totalTopicFollows: number;
+  totalVerdicts: number;
+  pageKindBreakdown: Array<{
+    pageKind: PageSummary["pageKind"];
+    count: number;
+  }>;
+  hostBreakdown: Array<{
+    host: string;
+    count: number;
+  }>;
+};
+
 export type FollowRecommendedPage = DiscoveryPage & {
   bookmarkedByCount: number;
   bookmarkedByHandles: string[];
@@ -2682,6 +2701,100 @@ async function getUnreadNotificationCommentIds(profileId: string): Promise<strin
 export async function getUnreadNotificationCount(profileId: string): Promise<number> {
   const notifications = await getNotificationsForProfile(profileId, 500);
   return notifications.filter((item) => item.unread).length;
+}
+
+export async function getPublicMetricsSnapshot(): Promise<PublicMetricsSnapshot> {
+  const [
+    verifiedUserRows,
+    commentRows,
+    pageRows,
+    bookmarkRows,
+    helpfulVoteRows,
+    profileFollowRows,
+    topicFollowRows,
+    verdictRows,
+    pageKindRows,
+    hostRows
+  ] = await Promise.all([
+    db
+      .select({
+        count: sql<number>`count(*)::int`
+      })
+      .from(worldIdVerifications),
+    db
+      .select({
+        count: sql<number>`count(*)::int`
+      })
+      .from(comments)
+      .where(eq(comments.hidden, false)),
+    db
+      .select({
+        count: sql<number>`count(*)::int`
+      })
+      .from(pages),
+    db
+      .select({
+        count: sql<number>`count(*)::int`
+      })
+      .from(saves),
+    db
+      .select({
+        count: sql<number>`count(*)::int`
+      })
+      .from(commentHelpfulVotes),
+    db
+      .select({
+        count: sql<number>`count(*)::int`
+      })
+      .from(follows),
+    db
+      .select({
+        count: sql<number>`count(*)::int`
+      })
+      .from(topicFollows),
+    db
+      .select({
+        count: sql<number>`count(*)::int`
+      })
+      .from(verdicts),
+    db
+      .select({
+        pageKind: pages.pageKind,
+        count: sql<number>`count(*)::int`
+      })
+      .from(pages)
+      .groupBy(pages.pageKind)
+      .orderBy(desc(sql<number>`count(*)::int`), pages.pageKind)
+      .limit(12),
+    db
+      .select({
+        host: pages.host,
+        count: sql<number>`count(*)::int`
+      })
+      .from(pages)
+      .groupBy(pages.host)
+      .orderBy(desc(sql<number>`count(*)::int`), pages.host)
+      .limit(12)
+  ]);
+
+  return {
+    totalVerifiedUsers: verifiedUserRows[0]?.count ?? 0,
+    totalComments: commentRows[0]?.count ?? 0,
+    totalPages: pageRows[0]?.count ?? 0,
+    totalBookmarks: bookmarkRows[0]?.count ?? 0,
+    totalHelpfulVotes: helpfulVoteRows[0]?.count ?? 0,
+    totalProfileFollows: profileFollowRows[0]?.count ?? 0,
+    totalTopicFollows: topicFollowRows[0]?.count ?? 0,
+    totalVerdicts: verdictRows[0]?.count ?? 0,
+    pageKindBreakdown: pageKindRows.map((row) => ({
+      pageKind: row.pageKind as PageSummary["pageKind"],
+      count: row.count
+    })),
+    hostBreakdown: hostRows.map((row) => ({
+      host: row.host,
+      count: row.count
+    }))
+  };
 }
 
 export async function markNotificationsRead(params: {
