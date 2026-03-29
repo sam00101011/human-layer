@@ -707,7 +707,7 @@ async function getRankedPageActivityRows(): Promise<RankedPageActivityRow[]> {
   const bookmarkMap = new Map(bookmarkRows.map((row) => [row.pageId, row.count]));
   const helpfulMap = new Map(helpfulRows.map((row) => [row.pageId, row.count]));
   const latestActivityRows = [...latestCommentRows, ...latestSaveRows, ...latestVerdictRows];
-  const latestActivityMap = new Map<string, Date>();
+  const latestActivityMap = new Map<string, Date | string>();
   for (const row of latestActivityRows) {
     const current = latestActivityMap.get(row.pageId);
     if (!current || row.latestActivityAt > current) {
@@ -744,7 +744,7 @@ async function getRankedPageActivityRows(): Promise<RankedPageActivityRow[]> {
       const commentCount = commentMap.get(row.id) ?? 0;
       const bookmarkCount = bookmarkMap.get(row.id) ?? 0;
       const helpfulCount = helpfulMap.get(row.id) ?? 0;
-      const latestActivityAt = (latestActivityMap.get(row.id) ?? new Date(0)).toISOString();
+      const latestActivityAt = toIsoDateString(latestActivityMap.get(row.id) ?? new Date(0));
 
       return {
         id: row.id,
@@ -1026,6 +1026,10 @@ function getFreshnessBoost(createdAt: Date | string): number {
   const created = createdAt instanceof Date ? createdAt : new Date(createdAt);
   const ageHours = Math.max(0, (Date.now() - created.getTime()) / (1000 * 60 * 60));
   return Math.max(0, 10 - ageHours / 12);
+}
+
+function toIsoDateString(value: Date | string): string {
+  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
 
 function rankTakeLikeSignal(params: {
