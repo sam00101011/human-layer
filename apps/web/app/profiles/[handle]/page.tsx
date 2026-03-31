@@ -39,11 +39,21 @@ function getReputationBadgeClass(level: string | undefined) {
   return `reputation-badge reputation-badge--${level}`;
 }
 
+function getAtprotoStatusLabel(status: string | undefined) {
+  if (status === "live") return "ATproto live";
+  if (status === "provisioned") return "ATproto provisioned";
+  if (status === "errored") return "ATproto issue";
+  return "ATproto reserved";
+}
+
 function buildTrustSignals(profile: NonNullable<Awaited<ReturnType<typeof getProfileSnapshotByHandle>>>) {
   const signals = [
     profile.verifiedHuman
       ? "Verified-human write access is active for this pseudonymous profile."
       : "Verification is not active yet, so trust is limited to public activity only.",
+    profile.atproto
+      ? `A managed AT Protocol identity is ${profile.atproto.status} for portable follows, starter packs, and future feed distribution.`
+      : "AT Protocol identity has not been attached to this profile yet.",
     profile.reputation
       ? profile.reputation.description
       : "This profile does not have enough public signal yet for a contributor read.",
@@ -99,6 +109,22 @@ export default async function ProfilePage(props: {
                 ? "One verified human controls this pseudonymous identity. Trust comes from a mix of verification, visible contributions, and the pages this profile keeps coming back to."
                 : "This profile is not verified yet, so treat it as an unverified public identity."}
             </p>
+            {profile.atproto ? (
+              <article className="trust-card stack compact">
+                <div className="chip-row">
+                  <span className="pill">AT Protocol</span>
+                  <span className="trust-badge soft">{getAtprotoStatusLabel(profile.atproto.status)}</span>
+                </div>
+                <p className="muted">
+                  Human Layer now reserves a managed AT Protocol identity for verified humans first,
+                  then can turn it into portable follows, lists, starter packs, and feed distribution.
+                </p>
+                <div className="stack compact">
+                  <strong>@{profile.atproto.handle}</strong>
+                  <code>{profile.atproto.did}</code>
+                </div>
+              </article>
+            ) : null}
           </div>
           {viewer && viewer.id !== profile.id ? (
             <div className="action-row">

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   createSessionForProfile: vi.fn(),
+  ensureManagedAtprotoIdentityForProfile: vi.fn(),
   upsertVerifiedProfile: vi.fn(),
   verifyWorldIdSubmission: vi.fn()
 }));
@@ -13,6 +14,7 @@ vi.mock("@human-layer/db", async () => {
   return {
     ...actual,
     createSessionForProfile: mocks.createSessionForProfile,
+    ensureManagedAtprotoIdentityForProfile: mocks.ensureManagedAtprotoIdentityForProfile,
     upsertVerifiedProfile: mocks.upsertVerifiedProfile
   };
 });
@@ -115,6 +117,11 @@ describe("POST /api/auth/world-id/verify", () => {
       }
     });
     mocks.createSessionForProfile.mockResolvedValue("session-token");
+    mocks.ensureManagedAtprotoIdentityForProfile.mockResolvedValue({
+      did: "did:web:humanlayer.social:profiles:profile-1",
+      handle: "signal_builder.humanlayer.social",
+      status: "reserved"
+    });
 
     const response = await POST(
       new NextRequest("http://localhost/api/auth/world-id/verify", {
@@ -136,6 +143,10 @@ describe("POST /api/auth/world-id/verify", () => {
       verificationLevel: "orb",
       signal: "human-layer-v1"
     });
+    expect(mocks.ensureManagedAtprotoIdentityForProfile).toHaveBeenCalledWith({
+      profileId: "profile-1",
+      handle: "signal_builder"
+    });
     expect(response.status).toBe(200);
     expect(response.headers.get("set-cookie")).toContain("hl_session=session-token");
     expect(response.headers.get("cache-control")).toBe("no-store");
@@ -151,7 +162,12 @@ describe("POST /api/auth/world-id/verify", () => {
         id: "profile-1",
         handle: "signal_builder",
         interestTags: ["devtools", "research"],
-        verifiedHuman: true
+        verifiedHuman: true,
+        atproto: {
+          did: "did:web:humanlayer.social:profiles:profile-1",
+          handle: "signal_builder.humanlayer.social",
+          status: "reserved"
+        }
       }
     });
   });

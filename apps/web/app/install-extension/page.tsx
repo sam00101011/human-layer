@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { getManagedWalletSnapshot } from "@human-layer/db";
+import { getAtprotoAccountSnapshot, getManagedWalletSnapshot } from "@human-layer/db";
 
+import { AtprotoIdentityPanel } from "../../components/atproto-identity-panel";
 import { InstallExtensionStatus } from "../../components/install-extension-status";
 import { PasskeyWalletCard } from "../../components/passkey-wallet-card";
 import { getAuthenticatedProfileFromCookies } from "../lib/auth";
@@ -18,6 +19,7 @@ export default async function InstallExtensionPage(props: {
   const source = searchParams.source?.trim();
   const viewer = await getAuthenticatedProfileFromCookies();
   const wallet = viewer ? await getManagedWalletSnapshot(viewer.id) : null;
+  const identity = viewer ? await getAtprotoAccountSnapshot(viewer.id) : null;
 
   return (
     <div className="page-shell stack legal-shell">
@@ -58,6 +60,8 @@ export default async function InstallExtensionPage(props: {
           ) : null}
         </section>
       ) : null}
+
+      {viewer ? <AtprotoIdentityPanel compact initialIdentity={identity} /> : null}
     </div>
   );
 }
