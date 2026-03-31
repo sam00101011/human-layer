@@ -819,6 +819,64 @@ input[placeholder="builder_signal"] {
   }
 }
 
+/* Chat mobile refinements */
+@media (max-width: 640px) {
+  .chat-sidebar,
+  .chat-thread {
+    padding: 12px;
+    border-radius: 12px;
+  }
+
+  .chat-connection-button {
+    padding: 10px;
+    gap: 4px;
+  }
+
+  .chat-message-list {
+    max-height: 320px;
+    gap: 8px;
+  }
+
+  .chat-message-card {
+    padding: 10px;
+    gap: 4px;
+  }
+
+  .chat-message-card p {
+    font-size: 14px;
+  }
+
+  .chat-empty-state {
+    padding: 12px;
+  }
+
+  .chat-composer .textarea {
+    min-height: 80px;
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 375px) {
+  .chat-sidebar,
+  .chat-thread {
+    padding: 8px;
+  }
+
+  .chat-connection-button {
+    padding: 8px;
+    font-size: 13px;
+  }
+
+  .chat-message-list {
+    max-height: 260px;
+  }
+
+  .chat-message-card {
+    padding: 8px;
+    border-radius: 10px;
+  }
+}
+
 /* ===== Trust grid ===== */
 .trust-grid {
   display: grid;
@@ -1433,5 +1491,42 @@ button:focus-visible {
   .wallet-history-item {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .wallet-meta-card,
+  .wallet-history-item,
+  .wallet-research-result {
+    padding: 12px;
+  }
+
+  .wallet-command-bar {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .wallet-command-input {
+    font-size: 14px;
+  }
+
+  .wallet-meta-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 375px) {
+  .wallet-command-bar {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .wallet-command-prompt {
+    font-size: 11px;
+  }
+
+  .wallet-meta-card,
+  .wallet-history-item,
+  .wallet-research-result {
+    padding: 10px;
+    border-radius: 12px;
   }
 }
