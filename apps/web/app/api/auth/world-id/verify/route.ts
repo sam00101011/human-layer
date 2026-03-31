@@ -3,7 +3,6 @@ import type { IDKitResult } from "@worldcoin/idkit";
 import {
   HandleTakenError,
   createSessionForProfile,
-  ensureManagedAtprotoIdentityForProfile,
   upsertVerifiedProfile
 } from "@human-layer/db";
 import { NextRequest, NextResponse } from "next/server";
@@ -98,10 +97,6 @@ export async function POST(request: NextRequest) {
       verificationLevel: verification.verificationLevel,
       signal: verification.signal
     });
-    const atproto = await ensureManagedAtprotoIdentityForProfile({
-      profileId: profile.id,
-      handle: profile.handle
-    });
 
     const rawToken = await createSessionForProfile(profile.id);
     const redirectTo = body?.handoff
@@ -124,8 +119,7 @@ export async function POST(request: NextRequest) {
         id: profile.id,
         handle: profile.handle,
         interestTags: profile.interestTags,
-        verifiedHuman: true,
-        atproto
+        verifiedHuman: true
       }
     });
 

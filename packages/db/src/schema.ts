@@ -38,16 +38,11 @@ export const profiles = pgTable(
     blockedReasonCode: text("blocked_reason_code"),
     blockedNote: text("blocked_note"),
     blockedByProfileId: uuid("blocked_by_profile_id"),
-    atprotoDid: text("atproto_did"),
-    atprotoHandle: text("atproto_handle"),
-    atprotoStatus: text("atproto_status"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
   },
   (table) => ({
     handleUnique: uniqueIndex("profiles_handle_unique").on(table.handle),
     nullifierHashUnique: uniqueIndex("profiles_nullifier_hash_unique").on(table.nullifierHash),
-    atprotoDidUnique: uniqueIndex("profiles_atproto_did_unique").on(table.atprotoDid),
-    atprotoHandleUnique: uniqueIndex("profiles_atproto_handle_unique").on(table.atprotoHandle),
     blockedByProfileForeignKey: foreignKey({
       columns: [table.blockedByProfileId],
       foreignColumns: [table.id],
@@ -78,41 +73,6 @@ export const worldIdVerifications = pgTable(
     )
   })
 );
-
-export const atprotoAccounts = pgTable(
-  "atproto_accounts",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    profileId: uuid("profile_id")
-      .notNull()
-      .references(() => profiles.id, { onDelete: "cascade" }),
-    did: text("did").notNull(),
-    handle: text("handle").notNull(),
-    pdsUrl: text("pds_url").notNull(),
-    accountType: text("account_type").notNull().default("managed"),
-    status: text("status").notNull().default("reserved"),
-    publicPostingEnabled: boolean("public_posting_enabled").default(false).notNull(),
-    metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
-  },
-  (table) => ({
-    profileUnique: uniqueIndex("atproto_accounts_profile_id_unique").on(table.profileId),
-    didUnique: uniqueIndex("atproto_accounts_did_unique").on(table.did),
-    handleUnique: uniqueIndex("atproto_accounts_handle_unique").on(table.handle)
-  })
-);
-
-export const atprotoSyncEvents = pgTable("atproto_sync_events", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  profileId: uuid("profile_id").references(() => profiles.id, { onDelete: "cascade" }),
-  accountId: uuid("account_id").references(() => atprotoAccounts.id, { onDelete: "set null" }),
-  eventType: text("event_type").notNull(),
-  status: text("status").notNull().default("completed"),
-  payload: jsonb("payload").$type<Record<string, unknown>>().default({}).notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  completedAt: timestamp("completed_at", { withTimezone: true })
-});
 
 
 export const sessions = pgTable(

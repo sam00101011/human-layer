@@ -326,19 +326,10 @@ export type ContributorReputation = {
   evidence: string[];
 };
 
-export type AtprotoIdentityStatus = "reserved" | "provisioned" | "live" | "errored";
-
-export type AtprotoIdentity = {
-  handle: string;
-  did: string;
-  status: AtprotoIdentityStatus;
-};
-
 export type ProfileSnapshot = {
   id: string;
   handle: string;
   verifiedHuman: boolean;
-  atproto: AtprotoIdentity | null;
   reputation?: ContributorReputation;
   interestTags: InterestTag[];
   counts: ProfileCounts;

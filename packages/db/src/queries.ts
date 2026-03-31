@@ -9,8 +9,6 @@ import {
   MAX_PROFILE_INTERESTS,
   SUPPORTED_DOMAIN_RULES,
   summarizeContributorReputation,
-  type AtprotoIdentity,
-  type AtprotoIdentityStatus,
   type CommentReportReasonCode,
   type ContributorReputation,
   type ContributorReputationMetrics,
@@ -30,8 +28,6 @@ import { createHash, randomBytes } from "node:crypto";
 
 import { db } from "./client";
 import {
-  atprotoAccounts,
-  atprotoSyncEvents,
   blockedProfiles,
   commentHelpfulVotes,
   commentReports,
@@ -70,7 +66,6 @@ export type StoredProfile = {
   handle: string;
   interestTags: InterestTag[];
   nullifierHash: string | null;
-  atproto: AtprotoIdentity | null;
   createdAt: string;
 };
 
@@ -103,23 +98,6 @@ export type NotificationPreferences = {
   followedProfileTakes: boolean;
   followedTopicTakes: boolean;
 };
-
-export type AtprotoAccountSnapshot = {
-  profileId: string;
-  profileHandle: string;
-  handle: string;
-  did: string;
-  status: AtprotoIdentityStatus;
-  pdsUrl: string;
-  accountType: string;
-  publicPostingEnabled: boolean;
-  metadata: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
-};
-
-const ATPROTO_MANAGED_DOMAIN = "humanlayer.social";
-const ATPROTO_MANAGED_PDS_URL = "https://humanlayer.social";
 
 export const MANAGED_WALLET_PROVIDERS = [
   "exa",
@@ -386,30 +364,11 @@ function coerceInterestTags(value: unknown): InterestTag[] {
   return uniqueInterestTags(value.filter((tag): tag is InterestTag => typeof tag === "string"));
 }
 
-function coerceAtprotoIdentity(row: {
-  atprotoDid?: string | null;
-  atprotoHandle?: string | null;
-  atprotoStatus?: string | null;
-}): AtprotoIdentity | null {
-  if (!row.atprotoDid || !row.atprotoHandle || !row.atprotoStatus) {
-    return null;
-  }
-
-  return {
-    did: row.atprotoDid,
-    handle: row.atprotoHandle,
-    status: row.atprotoStatus as AtprotoIdentityStatus
-  };
-}
-
 function mapStoredProfile(row: {
   id: string;
   handle: string;
   interestTags: unknown;
   nullifierHash: string | null;
-  atprotoDid?: string | null;
-  atprotoHandle?: string | null;
-  atprotoStatus?: string | null;
   createdAt: Date;
 }): StoredProfile {
   return {
@@ -417,17 +376,8 @@ function mapStoredProfile(row: {
     handle: row.handle,
     interestTags: coerceInterestTags(row.interestTags),
     nullifierHash: row.nullifierHash,
-    atproto: coerceAtprotoIdentity(row),
     createdAt: row.createdAt.toISOString()
   };
-}
-
-function buildManagedAtprotoHandle(handle: string): string {
-  return `${handle}.${ATPROTO_MANAGED_DOMAIN}`;
-}
-
-function buildManagedAtprotoDid(profileId: string): string {
-  return `did:web:${ATPROTO_MANAGED_DOMAIN}:profiles:${profileId}`;
 }
 
 function formatInterestList(tags: InterestTag[]) {
@@ -3091,264 +3041,6 @@ export async function upsertVerifiedProfile(params: {
   });
 }
 
-export async function ensureManagedAtprotoIdentityForProfile(params: {
-  profileId: string;
-  handle: string;
-}): Promise<AtprotoIdentity> {
-  return db.transaction(async (tx) => {
-    const atprotoHandle = buildManagedAtprotoHandle(params.handle);
-    const atprotoDid = buildManagedAtprotoDid(params.profileId);
-    const atprotoStatus: AtprotoIdentityStatus = "reserved";
-
-    await tx
-      .update(profiles)
-      .set({
-        atprotoDid,
-        atprotoHandle,
-        atprotoStatus
-      })
-      .where(eq(profiles.id, params.profileId));
-
-    const [account] = await tx
-      .insert(atprotoAccounts)
-      .values({
-        profileId: params.profileId,
-        did: atprotoDid,
-        handle: atprotoHandle,
-        pdsUrl: ATPROTO_MANAGED_PDS_URL,
-        accountType: "managed",
-        status: atprotoStatus,
-        publicPostingEnabled: false,
-        metadata: {
-          domain: ATPROTO_MANAGED_DOMAIN,
-          provisioningMode: "reserved_identity"
-        },
-        updatedAt: new Date()
-      })
-      .onConflictDoUpdate({
-        target: atprotoAccounts.profileId,
-        set: {
-          did: atprotoDid,
-          handle: atprotoHandle,
-          pdsUrl: ATPROTO_MANAGED_PDS_URL,
-          status: atprotoStatus,
-          metadata: {
-            domain: ATPROTO_MANAGED_DOMAIN,
-            provisioningMode: "reserved_identity"
-          },
-          updatedAt: new Date()
-        }
-      })
-      .returning({
-        id: atprotoAccounts.id
-      });
-
-    await tx.insert(atprotoSyncEvents).values({
-      profileId: params.profileId,
-      accountId: account?.id ?? null,
-      eventType: "identity_reserved",
-      status: "completed",
-      payload: {
-        did: atprotoDid,
-        handle: atprotoHandle,
-        domain: ATPROTO_MANAGED_DOMAIN
-      },
-      completedAt: new Date()
-    });
-
-    return {
-      did: atprotoDid,
-      handle: atprotoHandle,
-      status: atprotoStatus
-    };
-  });
-}
-
-export async function getAtprotoAccountSnapshot(
-  profileId: string
-): Promise<AtprotoAccountSnapshot | null> {
-  const row = await db.query.atprotoAccounts.findFirst({
-    where: eq(atprotoAccounts.profileId, profileId)
-  });
-
-  if (!row) {
-    const profile = await db.query.profiles.findFirst({
-      where: eq(profiles.id, profileId)
-    });
-
-    if (!profile?.atprotoDid || !profile.atprotoHandle || !profile.atprotoStatus) {
-      return null;
-    }
-
-    return {
-      profileId: profile.id,
-      profileHandle: profile.handle,
-      handle: profile.atprotoHandle,
-      did: profile.atprotoDid,
-      status: profile.atprotoStatus as AtprotoIdentityStatus,
-      pdsUrl: ATPROTO_MANAGED_PDS_URL,
-      accountType: "managed",
-      publicPostingEnabled: false,
-      metadata: {
-        domain: ATPROTO_MANAGED_DOMAIN,
-        provisioningMode: "reserved_identity"
-      },
-      createdAt: profile.createdAt.toISOString(),
-      updatedAt: profile.createdAt.toISOString()
-    };
-  }
-
-  const profile = await db.query.profiles.findFirst({
-    where: eq(profiles.id, profileId),
-    columns: {
-      id: true,
-      handle: true
-    }
-  });
-
-  if (!profile) {
-    return null;
-  }
-
-  return {
-    profileId: profile.id,
-    profileHandle: profile.handle,
-    handle: row.handle,
-    did: row.did,
-    status: row.status as AtprotoIdentityStatus,
-    pdsUrl: row.pdsUrl,
-    accountType: row.accountType,
-    publicPostingEnabled: row.publicPostingEnabled,
-    metadata: (row.metadata as Record<string, unknown>) ?? {},
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString()
-  };
-}
-
-export async function finalizeManagedAtprotoIdentityForProfile(params: {
-  profileId: string;
-  handle: string;
-  did: string;
-  status: AtprotoIdentityStatus;
-  pdsUrl: string;
-  publicPostingEnabled?: boolean;
-  metadata?: Record<string, unknown>;
-}): Promise<AtprotoAccountSnapshot> {
-  return db.transaction(async (tx) => {
-    const [profile] = await tx
-      .update(profiles)
-      .set({
-        atprotoDid: params.did,
-        atprotoHandle: params.handle,
-        atprotoStatus: params.status
-      })
-      .where(eq(profiles.id, params.profileId))
-      .returning({
-        id: profiles.id,
-        handle: profiles.handle
-      });
-
-    const [account] = await tx
-      .insert(atprotoAccounts)
-      .values({
-        profileId: params.profileId,
-        did: params.did,
-        handle: params.handle,
-        pdsUrl: params.pdsUrl,
-        accountType: "managed",
-        status: params.status,
-        publicPostingEnabled: params.publicPostingEnabled ?? false,
-        metadata: params.metadata ?? {},
-        updatedAt: new Date()
-      })
-      .onConflictDoUpdate({
-        target: atprotoAccounts.profileId,
-        set: {
-          did: params.did,
-          handle: params.handle,
-          pdsUrl: params.pdsUrl,
-          status: params.status,
-          publicPostingEnabled: params.publicPostingEnabled ?? false,
-          metadata: params.metadata ?? {},
-          updatedAt: new Date()
-        }
-      })
-      .returning();
-
-    await tx.insert(atprotoSyncEvents).values({
-      profileId: params.profileId,
-      accountId: account.id,
-      eventType: "identity_provisioned",
-      status: "completed",
-      payload: {
-        did: params.did,
-        handle: params.handle,
-        pdsUrl: params.pdsUrl,
-        status: params.status
-      },
-      completedAt: new Date()
-    });
-
-    return {
-      profileId: profile.id,
-      profileHandle: profile.handle,
-      handle: account.handle,
-      did: account.did,
-      status: account.status as AtprotoIdentityStatus,
-      pdsUrl: account.pdsUrl,
-      accountType: account.accountType,
-      publicPostingEnabled: account.publicPostingEnabled,
-      metadata: (account.metadata as Record<string, unknown>) ?? {},
-      createdAt: account.createdAt.toISOString(),
-      updatedAt: account.updatedAt.toISOString()
-    };
-  });
-}
-
-export async function updateAtprotoAccountSettings(params: {
-  profileId: string;
-  publicPostingEnabled: boolean;
-}): Promise<AtprotoAccountSnapshot> {
-  const [account] = await db
-    .update(atprotoAccounts)
-    .set({
-      publicPostingEnabled: params.publicPostingEnabled,
-      updatedAt: new Date()
-    })
-    .where(eq(atprotoAccounts.profileId, params.profileId))
-    .returning();
-
-  if (!account) {
-    throw new Error("atproto account not linked");
-  }
-
-  const profile = await db.query.profiles.findFirst({
-    where: eq(profiles.id, params.profileId),
-    columns: {
-      id: true,
-      handle: true
-    }
-  });
-
-  if (!profile) {
-    throw new Error("profile not found");
-  }
-
-  return {
-    profileId: profile.id,
-    profileHandle: profile.handle,
-    handle: account.handle,
-    did: account.did,
-    status: account.status as AtprotoIdentityStatus,
-    pdsUrl: account.pdsUrl,
-    accountType: account.accountType,
-    publicPostingEnabled: account.publicPostingEnabled,
-    metadata: (account.metadata as Record<string, unknown>) ?? {},
-    createdAt: account.createdAt.toISOString(),
-    updatedAt: account.updatedAt.toISOString()
-  };
-}
-
 async function getProfileCounts(profileId: string) {
   const [commentCountRow] = await db
     .select({
@@ -4028,7 +3720,6 @@ async function buildProfileSnapshot(profile: StoredProfile): Promise<ProfileSnap
     id: profile.id,
     handle: profile.handle,
     verifiedHuman: Boolean(profile.nullifierHash),
-    atproto: profile.atproto,
     reputation,
     interestTags: profile.interestTags,
     counts,
